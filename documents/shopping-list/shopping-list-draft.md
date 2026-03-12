@@ -1,4 +1,4 @@
-Team SPHERE → Self-Propelled Holonomic Experimental Rolling Entity
+Team SPHERE 
 
 Liste de Composants
 
