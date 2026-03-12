@@ -1,6 +1,6 @@
 Team SPHERE 
 
-Liste de Composants
+# Liste de Composants
 
 ## 1. Tête
 - Caméra [XIAO VISION AI CAMERA](https://www.digikey.ch/fr/products/detail/seeed-technology-co-ltd/104990982/26834471?gclsrc=aw.ds&&utm_adgroup=&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_High%20ROAS&utm_term=&productid=26834471&utm_content=&utm_id=go_cmp-20198980972_adg-_ad-__dev-c_ext-_prd-26834471_sig-CjwKCAjwyMnNBhBNEiwA-KcguzZgMnGMN7iRC-fTvbVDVGzj7HQlA-RUnpURrfMboDbgimLWBU0xXxoCZkwQAvD_BwE&gad_source=1&gad_campaignid=20198989384&gbraid=0AAAAADrbLlgCbyFEIq5ApPNqGTpilzILU&gclid=CjwKCAjwyMnNBhBNEiwA-KcguzZgMnGMN7iRC-fTvbVDVGzj7HQlA-RUnpURrfMboDbgimLWBU0xXxoCZkwQAvD_BwE)
