@@ -19,6 +19,9 @@ Team SPHERE
 - Armature
 - Puce / microcontrôleur  [à déterminer]
 - Moteurs × 3
+https://www.digikey.ch/fr/products/detail/dfrobot/FIT0185/6588527?gclsrc=aw.ds&&utm_adgroup=&utm_source=google&utm_medium=cpc&utm_campaign=PMax%20Shopping_Product_Medium%20ROAS&utm_term=&productid=6588527&utm_content=&utm_id=go_cmp-20185743540_adg-_ad-__dev-c_ext-_prd-6588527_sig-EAIaIQobChMIzeOIxNCrkwMVvZqDBx0LsjPEEAQYAyABEgKMWPD_BwE&gad_source=1&gad_campaignid=20185745493&gbraid=0AAAAADrbLlgvIqXdbjaXJgnffnJEROMq3&gclid=EAIaIQobChMIzeOIxNCrkwMVvZqDBx0LsjPEEAQYAyABEgKMWPD_BwE
+- Driver x2
+https://www.galaxus.ch/fr/s1/product/purecrea-double-bts7960-43a-motor-treiber-h-bruecke-carte-de-developpement-kit-54115890?offertype=marketplace&offerid=8244233&utm_source=google&utm_medium=cpc&utm_campaign=PMax:+PROD_CH_SSC_Cluster_2(C)&campaignid=20399813757&adtype=pla&adgroupid=&adid=&dgCidg=EAIaIQobChMIltzFrNOrkwMV2JmDBx24XBkSEAQYBSABEgJ-hPD_BwE&gclsrc=aw.ds&&dgCidg=EAIaIQobChMIltzFrNOrkwMV2JmDBx24XBkSEAQYBSABEgJ-hPD_BwE&gad_source=1&gad_campaignid=19973636350&gbraid=0AAAAADmCc4PBMm5-ALn3rHJov3IG56j8N&gclid=EAIaIQobChMIltzFrNOrkwMV2JmDBx24XBkSEAQYBSABEgJ-hPD_BwE
 - Batterie
 - Gyroscope  [?]
 - Fils
