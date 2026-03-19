@@ -1,8 +1,8 @@
-#Project Proposal — BB8 Robot with Omni Wheels
+# Project Proposal — BB8 Robot with Omni Wheels
 
-##1. High-level project description
+## 1. High-level project description
 
-##2. Related projects & resources
+## 2. Related projects & resources
 
 Project 1 — 
 
@@ -10,10 +10,10 @@ Project 2 —
 
 ...
 
-##3. User stories
+## 3. User stories
 
 
-##4. Product management & afterlif
+## 4. Product management & afterlif
 
 Follow-up projects for future CS-358 students:
 
@@ -31,4 +31,4 @@ Retail environments
 Startup opportunity
 [Briefly describe the concept: modular robotics platform, SaaS model for behaviors/content, target markets.]
 
-##5. Shopping List
+## 5. Shopping List
