@@ -1,4 +1,4 @@
-# Risk Assessment — BB-8 Project
+# Risk Assessment
 
 ## WiFi and/or Bluetooth communication with the ESP32
 
