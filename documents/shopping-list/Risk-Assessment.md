@@ -31,3 +31,11 @@ The motors must move the entire robot (chassis, batteries, and all electronics) 
 ## Omni-wheel positioning causing excess friction or mechanical resistance
 
 The three omni-wheels must be positioned at angles that allow movement in any direction while maintaining consistent contact with the inside of the sphere. If the geometry is wrong (wrong angles, wrong contact pressure, or misaligned axles) the wheels will generate lateral friction forces that resist motion rather than enabling it. This is a subtle mechanical design problem: small errors in wheel placement can create binding, uneven wear, or loss of directional control. It is also difficult to diagnose once the chassis is assembled inside the sphere.
+
+## Sphere structural integrity and cracking
+
+The sphere is a critical structural component that must withstand continuous mechanical stress from internal forces, impacts with the environment, and repeated opening/closing if the system is accessible. Depending on the material (e.g., PLA, PETG, polycarbonate), the sphere may be prone to cracking, especially along layer lines if 3D printed. Small defects or stress concentrations (such as holes for ventilation or assembly seams) can propagate into larger fractures over time. A cracked sphere not only compromises the aesthetic but can completely break the locomotion system, as the internal traction relies on a smooth and rigid surface.
+
+## Imperfect sphere geometry
+
+If the sphere is not perfectly round (due to manufacturing tolerances, deformation, poor assembly, or uneven material thickness), the robot may experience irregular motion. Even small deviations in curvature can change how the omni-wheels contact the surface, creating vibration, wobble, or inconsistent rolling behavior. Since the entire locomotion concept depends on predictable contact between the wheels and the sphere, geometric imperfections can significantly degrade performance.
