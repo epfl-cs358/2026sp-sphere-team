@@ -4,6 +4,6 @@
 - [Project Proposal](https://github.com/user-attachments/files/26371570/project_proposal.1.pdf)
 
 ## TODO:
-- Scala photo
+- Scale photo
 - Head circuit
 - Add magnet interference
