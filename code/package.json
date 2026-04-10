@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "scripts": {
+    "dev": "pnpm dev:webapp & pnpm dev:stream & pnpm dev:relay & wait",
+    "dev:webapp": "pnpm --filter webapp dev",
+    "dev:stream": "pnpm --filter stream-client dev",
+    "dev:relay": "pnpm --filter stream-client relay"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "unrs-resolver"]
+  }
+}
