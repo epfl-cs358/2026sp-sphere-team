@@ -5,8 +5,8 @@
 DECLARE_FAKE_VOID_FUNC(BTS7960_Enable);
 DECLARE_FAKE_VOID_FUNC(BTS7960_Disable);
 DECLARE_FAKE_VOID_FUNC(BTS7960_Stop);
-DECLARE_FAKE_VOID_FUNC(BTS7960_TurnLeft, int8_t);
-DECLARE_FAKE_VOID_FUNC(BTS7960_TurnRight, int8_t);
+DECLARE_FAKE_VOID_FUNC(BTS7960_TurnLeft, uint8_t);
+DECLARE_FAKE_VOID_FUNC(BTS7960_TurnRight, uint8_t);
 
 class BTS7960 {
 public:
@@ -15,8 +15,8 @@ public:
     void Enable() { BTS7960_Enable(); }
     void Disable() { BTS7960_Disable(); }
     void Stop() { BTS7960_Stop(); }
-    void TurnLeft(int8_t pwm) { BTS7960_TurnLeft(pwm); }
-    void TurnRight(int8_t pwm) { BTS7960_TurnRight(pwm); }
+    void TurnLeft(uint8_t pwm) { BTS7960_TurnLeft(pwm); }
+    void TurnRight(uint8_t pwm) { BTS7960_TurnRight(pwm); }
 };
 
 #define RESET_BTS7960_FAKES() do { \

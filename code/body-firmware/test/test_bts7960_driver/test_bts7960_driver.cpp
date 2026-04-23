@@ -14,8 +14,8 @@ DEFINE_FFF_GLOBALS;
 DEFINE_FAKE_VOID_FUNC(BTS7960_Enable);
 DEFINE_FAKE_VOID_FUNC(BTS7960_Disable);
 DEFINE_FAKE_VOID_FUNC(BTS7960_Stop);
-DEFINE_FAKE_VOID_FUNC(BTS7960_TurnLeft, int8_t);
-DEFINE_FAKE_VOID_FUNC(BTS7960_TurnRight, int8_t);
+DEFINE_FAKE_VOID_FUNC(BTS7960_TurnLeft, uint8_t);
+DEFINE_FAKE_VOID_FUNC(BTS7960_TurnRight, uint8_t);
 
 static BTS7960Driver* driver;
 
@@ -41,7 +41,7 @@ void test_full_forward() {
     driver->setOutput(1.0f);
     TEST_ASSERT_EQUAL(1, BTS7960_Enable_fake.call_count);
     TEST_ASSERT_EQUAL(1, BTS7960_TurnLeft_fake.call_count);
-    TEST_ASSERT_EQUAL_INT8(127, BTS7960_TurnLeft_fake.arg0_val);
+    TEST_ASSERT_EQUAL_UINT8(255, BTS7960_TurnLeft_fake.arg0_val);
 }
 
 void test_full_reverse() {
@@ -50,7 +50,7 @@ void test_full_reverse() {
     driver->setOutput(-1.0f);
     TEST_ASSERT_EQUAL(1, BTS7960_Enable_fake.call_count);
     TEST_ASSERT_EQUAL(1, BTS7960_TurnRight_fake.call_count);
-    TEST_ASSERT_EQUAL_INT8(127, BTS7960_TurnRight_fake.arg0_val);
+    TEST_ASSERT_EQUAL_UINT8(255, BTS7960_TurnRight_fake.arg0_val);
 }
 
 void test_coast() {
@@ -92,16 +92,16 @@ void test_direction_switch() {
     RESET_BTS7960_FAKES();
     driver->setOutput(-0.5f);
     TEST_ASSERT_EQUAL(1, BTS7960_TurnRight_fake.call_count);
-    TEST_ASSERT_EQUAL_INT8(63, BTS7960_TurnRight_fake.arg0_val);
+    TEST_ASSERT_EQUAL_UINT8(127, BTS7960_TurnRight_fake.arg0_val);
 }
 
 void test_dead_zone() {
     driver->begin();
     RESET_BTS7960_FAKES();
     driver->setOutput(0.001f);
-    // 0.001 * 127 = 0.127, truncated to int8_t 0
-    TEST_ASSERT_EQUAL(1, BTS7960_TurnLeft_fake.call_count);
-    TEST_ASSERT_EQUAL_INT8(0, BTS7960_TurnLeft_fake.arg0_val);
+    // 0.001 * 255 = 0.255, truncated to uint8_t 0 → Disable() instead
+    TEST_ASSERT_EQUAL(1, BTS7960_Disable_fake.call_count);
+    TEST_ASSERT_EQUAL(0, BTS7960_TurnLeft_fake.call_count);
 }
 
 void test_assert_passes_at_boundaries() {
