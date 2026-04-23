@@ -1,10 +1,13 @@
 /** Developed with AI assistance (Claude, Anthropic) */
 
+export interface VideoSourceCallbacks {
+  onFrame: (frame: HTMLImageElement) => void;
+  onError: (error: Error) => void;
+}
+
 export interface VideoSource {
   readonly type: string;
-  connect(url: string): void;
+  connect(url: string, callbacks: VideoSourceCallbacks): void;
   disconnect(): void;
-  onFrame: ((frame: HTMLImageElement) => void) | null;
-  onError: ((error: Error) => void) | null;
   readonly connected: boolean;
 }

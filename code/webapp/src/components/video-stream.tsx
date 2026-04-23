@@ -26,14 +26,13 @@ export function VideoStream({ source, url, className }: VideoStreamProps) {
   }, []);
 
   useEffect(() => {
-    source.onFrame = drawFrame;
-    source.onError = (err) => console.error(`[${source.type}]`, err);
-    source.connect(url);
+    source.connect(url, {
+      onFrame: drawFrame,
+      onError: (err) => console.error(`[${source.type}]`, err),
+    });
 
     return () => {
       source.disconnect();
-      source.onFrame = null;
-      source.onError = null;
     };
   }, [source, url, drawFrame]);
 

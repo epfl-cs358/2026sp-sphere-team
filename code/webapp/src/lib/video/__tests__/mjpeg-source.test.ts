@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MJPEGSource } from "../mjpeg-source";
 
+const noopCallbacks = { onFrame: vi.fn(), onError: vi.fn() };
+
 describe("MJPEGSource", () => {
   let source: MJPEGSource;
 
@@ -21,21 +23,20 @@ describe("MJPEGSource", () => {
   });
 
   it("sets img src on connect", () => {
-    source.connect("http://192.168.1.1/stream");
+    source.connect("http://192.168.1.1/stream", noopCallbacks);
     // The Image constructor is available in jsdom
     // We verify disconnect clears it
     expect(source.connected).toBe(false); // not yet connected until onload
   });
 
   it("disconnect clears state", () => {
-    source.connect("http://192.168.1.1/stream");
+    source.connect("http://192.168.1.1/stream", noopCallbacks);
     source.disconnect();
     expect(source.connected).toBe(false);
   });
 
   it("calls onError when image fails to load", () => {
     const onError = vi.fn();
-    source.onError = onError;
 
     // Override Image to trigger onerror
     const originalImage = globalThis.Image;
@@ -46,7 +47,7 @@ describe("MJPEGSource", () => {
       }
     } as typeof Image;
 
-    source.connect("http://bad-url/stream");
+    source.connect("http://bad-url/stream", { onFrame: vi.fn(), onError });
 
     return vi.waitFor(() => {
       expect(onError).toHaveBeenCalled();
@@ -57,9 +58,9 @@ describe("MJPEGSource", () => {
   });
 
   it("can reconnect after disconnect", () => {
-    source.connect("http://192.168.1.1/stream");
+    source.connect("http://192.168.1.1/stream", noopCallbacks);
     source.disconnect();
-    source.connect("http://192.168.1.1/stream");
+    source.connect("http://192.168.1.1/stream", noopCallbacks);
     // Should not throw
     expect(source.connected).toBe(false); // waiting for onload
   });

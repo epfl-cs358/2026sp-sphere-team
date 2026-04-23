@@ -1,11 +1,9 @@
 /** Developed with AI assistance (Claude, Anthropic) */
 
-import { VideoSource } from "./types";
+import { VideoSource, VideoSourceCallbacks } from "./types";
 
 export class MJPEGSource implements VideoSource {
   readonly type = "mjpeg";
-  onFrame: ((frame: HTMLImageElement) => void) | null = null;
-  onError: ((error: Error) => void) | null = null;
 
   private img: HTMLImageElement | null = null;
   private _connected = false;
@@ -14,7 +12,7 @@ export class MJPEGSource implements VideoSource {
     return this._connected;
   }
 
-  connect(url: string) {
+  connect(url: string, { onFrame, onError }: VideoSourceCallbacks) {
     this.disconnect();
 
     const img = new Image();
@@ -22,12 +20,12 @@ export class MJPEGSource implements VideoSource {
 
     img.onload = () => {
       this._connected = true;
-      this.onFrame?.(img);
+      onFrame(img);
     };
 
     img.onerror = () => {
       this._connected = false;
-      this.onError?.(new Error(`MJPEG stream failed: ${url}`));
+      onError(new Error(`MJPEG stream failed: ${url}`));
     };
 
     // MJPEG streams continuously update the same <img> element

@@ -34,6 +34,8 @@ class MockWebSocket {
   }
 }
 
+const noopCallbacks = { onFrame: vi.fn(), onError: vi.fn() };
+
 describe("WebSocketSource", () => {
   let source: WebSocketSource;
   const originalWebSocket = globalThis.WebSocket;
@@ -58,24 +60,24 @@ describe("WebSocketSource", () => {
   });
 
   it("creates a WebSocket connection with the given URL", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0].url).toBe("ws://localhost:3001");
   });
 
   it("sets binaryType to arraybuffer", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     expect(MockWebSocket.instances[0].binaryType).toBe("arraybuffer");
   });
 
   it("sets connected to true on open", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     MockWebSocket.instances[0].simulateOpen();
     expect(source.connected).toBe(true);
   });
 
   it("sets connected to false on close", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     MockWebSocket.instances[0].simulateOpen();
     MockWebSocket.instances[0].close();
     expect(source.connected).toBe(false);
@@ -83,8 +85,7 @@ describe("WebSocketSource", () => {
 
   it("calls onError when WebSocket errors", () => {
     const onError = vi.fn();
-    source.onError = onError;
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", { onFrame: vi.fn(), onError });
     MockWebSocket.instances[0].simulateError();
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("ws://localhost:3001") })
@@ -92,15 +93,15 @@ describe("WebSocketSource", () => {
   });
 
   it("closes previous connection on reconnect", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     const first = MockWebSocket.instances[0];
-    source.connect("ws://localhost:3002");
+    source.connect("ws://localhost:3002", noopCallbacks);
     expect(first.close).toHaveBeenCalled();
     expect(MockWebSocket.instances).toHaveLength(2);
   });
 
   it("disconnect closes WebSocket", () => {
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     const ws = MockWebSocket.instances[0];
     source.disconnect();
     expect(ws.close).toHaveBeenCalled();
@@ -122,7 +123,7 @@ describe("WebSocketSource", () => {
       }
     } as typeof Image;
 
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", noopCallbacks);
     const ws = MockWebSocket.instances[0];
     ws.simulateOpen();
 
@@ -139,8 +140,7 @@ describe("WebSocketSource", () => {
 
   it("ignores non-ArrayBuffer messages", () => {
     const onFrame = vi.fn();
-    source.onFrame = onFrame;
-    source.connect("ws://localhost:3001");
+    source.connect("ws://localhost:3001", { onFrame, onError: vi.fn() });
     const ws = MockWebSocket.instances[0];
     ws.simulateOpen();
 

@@ -1,11 +1,9 @@
 /** Developed with AI assistance (Claude, Anthropic) */
 
-import { VideoSource } from "./types";
+import { VideoSource, VideoSourceCallbacks } from "./types";
 
 export class MockSource implements VideoSource {
   readonly type = "mock";
-  onFrame: ((frame: HTMLImageElement) => void) | null = null;
-  onError: ((error: Error) => void) | null = null;
 
   private canvas: HTMLCanvasElement | null = null;
   private animationId: number | null = null;
@@ -15,7 +13,7 @@ export class MockSource implements VideoSource {
     return this._connected;
   }
 
-  connect() {
+  connect(_url: string, { onFrame }: VideoSourceCallbacks) {
     this.disconnect();
 
     const canvas = document.createElement("canvas");
@@ -46,7 +44,7 @@ export class MockSource implements VideoSource {
       frame++;
 
       const img = new Image();
-      img.onload = () => this.onFrame?.(img);
+      img.onload = () => onFrame(img);
       img.src = ctx ? canvas.toDataURL("image/jpeg") : "data:image/jpeg;base64,";
 
       this.animationId = requestAnimationFrame(render);

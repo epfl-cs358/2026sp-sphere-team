@@ -1,11 +1,9 @@
 /** Developed with AI assistance (Claude, Anthropic) */
 
-import { VideoSource } from "./types";
+import { VideoSource, VideoSourceCallbacks } from "./types";
 
 export class WebSocketSource implements VideoSource {
   readonly type = "websocket";
-  onFrame: ((frame: HTMLImageElement) => void) | null = null;
-  onError: ((error: Error) => void) | null = null;
 
   private ws: WebSocket | null = null;
   private _connected = false;
@@ -14,7 +12,7 @@ export class WebSocketSource implements VideoSource {
     return this._connected;
   }
 
-  connect(url: string) {
+  connect(url: string, { onFrame, onError }: VideoSourceCallbacks) {
     this.disconnect();
 
     const ws = new WebSocket(url);
@@ -32,7 +30,7 @@ export class WebSocketSource implements VideoSource {
 
       const img = new Image();
       img.onload = () => {
-        this.onFrame?.(img);
+        onFrame(img);
         URL.revokeObjectURL(objectUrl);
       };
       img.onerror = () => {
@@ -42,7 +40,7 @@ export class WebSocketSource implements VideoSource {
     };
 
     ws.onerror = () => {
-      this.onError?.(new Error(`WebSocket stream failed: ${url}`));
+      onError(new Error(`WebSocket stream failed: ${url}`));
     };
 
     ws.onclose = () => {

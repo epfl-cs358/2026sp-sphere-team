@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MockSource } from "../mock-source";
 
+const noopCallbacks = { onFrame: vi.fn(), onError: vi.fn() };
+
 describe("MockSource", () => {
   let source: MockSource;
 
@@ -21,12 +23,12 @@ describe("MockSource", () => {
   });
 
   it("connects and sets connected to true", () => {
-    source.connect("");
+    source.connect("", noopCallbacks);
     expect(source.connected).toBe(true);
   });
 
   it("disconnects and sets connected to false", () => {
-    source.connect("");
+    source.connect("", noopCallbacks);
     source.disconnect();
     expect(source.connected).toBe(false);
   });
@@ -41,7 +43,7 @@ describe("MockSource", () => {
       }
     } as typeof Image;
 
-    source.connect("");
+    source.connect("", noopCallbacks);
     expect(created.length).toBeGreaterThan(0);
 
     globalThis.Image = origImage;
@@ -49,18 +51,18 @@ describe("MockSource", () => {
 
   it("stops rendering after disconnect", async () => {
     const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame");
-    source.connect("");
+    source.connect("", noopCallbacks);
     source.disconnect();
     expect(cancelSpy).toHaveBeenCalled();
     cancelSpy.mockRestore();
   });
 
   it("can reconnect after disconnect", () => {
-    source.connect("");
+    source.connect("", noopCallbacks);
     source.disconnect();
     expect(source.connected).toBe(false);
 
-    source.connect("");
+    source.connect("", noopCallbacks);
     expect(source.connected).toBe(true);
   });
 });
