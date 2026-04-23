@@ -1,3 +1,6 @@
+static bool _assert_fired = false;
+#define BB8_ASSERT_HANDLER(msg, file, line) _assert_fired = true
+
 #include <unity.h>
 #include <cmath>
 #include <climits>
@@ -10,6 +13,7 @@ static FIT0186Motor<5>* motor;
 
 void setUp() {
     driver = MockDriver();
+    _assert_fired = false;
     motor = new FIT0186Motor<5>(driver, EncoderPins{.a = 1, .b = 2}, 700);
     _set_micros(0);
     motor->begin();
@@ -39,14 +43,14 @@ void test_rpm_zero_initially() {
 }
 
 void test_rpm_calculation() {
-    // Simulate 10ms elapsed, 29 encoder ticks (approx 249 RPM)
+    // Simulate 10ms elapsed, 29 encoder ticks
     _set_micros(10000);  // 10ms = 10000 us
     motor->_encoder._count = 29;
     motor->update();
 
-    // expected: (29 / 700.0) * (60.0 / 0.01) = 248.57 RPM
-    float expected = (29.0f / 700.0f) * (60.0f / 0.01f);
-    TEST_ASSERT_FLOAT_WITHIN(1.0f, expected, motor->getRPM());
+    // expected: (29 / 700.0) * (60.0 / 0.01) / 43.8 = output-shaft RPM
+    float expected = (29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
 void test_filtered_rpm_smooths() {
@@ -63,8 +67,8 @@ void test_reverse_direction() {
     _set_micros(10000);
     motor->_encoder._count = -29;
     motor->update();
-    float expected = (-29.0f / 700.0f) * (60.0f / 0.01f);
-    TEST_ASSERT_FLOAT_WITHIN(1.0f, expected, motor->getRPM());
+    float expected = (-29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
     TEST_ASSERT_TRUE(motor->getRPM() < 0.0f);
 }
 
@@ -81,8 +85,8 @@ void test_micros_overflow() {
     motor->_encoder._count = 29;
     motor->update();
 
-    float expected = (29.0f / 700.0f) * (60.0f / 0.01f);
-    TEST_ASSERT_FLOAT_WITHIN(1.0f, expected, motor->getRPM());
+    float expected = (29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
 void test_same_micros_noop() {
@@ -101,21 +105,18 @@ void test_skipped_update_preserves_ticks() {
 
     _set_micros(10000);  // 10ms
     motor->update();  // should see full 100 tick delta
-    float expected = (100.0f / 700.0f) * (60.0f / 0.01f);
-    TEST_ASSERT_FLOAT_WITHIN(1.0f, expected, motor->getRPM());
+    float expected = (100.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
-void test_zero_cpr_produces_inf() {
+void test_zero_cpr_asserts() {
     delete motor;
     driver = MockDriver();
+    _assert_fired = false;
     motor = new FIT0186Motor<5>(driver, EncoderPins{.a = 1, .b = 2}, 0);
-    _set_micros(0);
-    motor->begin();
-
-    _set_micros(10000);
-    motor->_encoder._count = 10;
-    motor->update();
-    TEST_ASSERT_TRUE(std::isinf(motor->getRPM()));
+    TEST_ASSERT_TRUE(_assert_fired);
+    // Recreate valid motor for tearDown
+    motor = new FIT0186Motor<5>(driver, EncoderPins{.a = 1, .b = 2}, 700);
 }
 
 void test_filter_convergence_on_reversal() {
@@ -126,7 +127,7 @@ void test_filter_convergence_on_reversal() {
         motor->update();
     }
     float forwardRPM = motor->getFilteredRPM();
-    TEST_ASSERT_TRUE(forwardRPM > 200.0f);
+    TEST_ASSERT_TRUE(forwardRPM > 4.0f);
 
     // 5 reverse updates (encoder goes backwards)
     for (int i = 6; i <= 10; i++) {
@@ -135,7 +136,7 @@ void test_filter_convergence_on_reversal() {
         motor->update();
     }
     // After 5 reverse samples, filter should fully converge to negative
-    TEST_ASSERT_TRUE(motor->getFilteredRPM() < -200.0f);
+    TEST_ASSERT_TRUE(motor->getFilteredRPM() < -4.0f);
 }
 
 void test_split_intervals_consistent() {
@@ -151,9 +152,10 @@ void test_split_intervals_consistent() {
     motor->update();
     float rpm2 = motor->getRPM();
 
-    // Both should be 60 RPM: (350/700) * (60/0.5) = 60
-    TEST_ASSERT_FLOAT_WITHIN(0.1f, 60.0f, rpm1);
-    TEST_ASSERT_FLOAT_WITHIN(0.1f, 60.0f, rpm2);
+    // Output-shaft: (350/700) * (60/0.5) / 43.8 ≈ 1.37 RPM
+    float expected = 60.0f / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, expected, rpm1);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, expected, rpm2);
 }
 
 void test_high_rpm() {
@@ -161,8 +163,8 @@ void test_high_rpm() {
     _set_micros(100);
     motor->_encoder._count = 700;
     motor->update();
-    float expected = (700.0f / 700.0f) * (60.0f / 0.0001f);
-    TEST_ASSERT_FLOAT_WITHIN(100.0f, expected, motor->getRPM());
+    float expected = (700.0f / 700.0f) * (60.0f / 0.0001f) / fit0186::GEAR_RATIO;
+    TEST_ASSERT_FLOAT_WITHIN(10.0f, expected, motor->getRPM());
     TEST_ASSERT_TRUE(std::isfinite(motor->getRPM()));
 }
 
@@ -178,7 +180,7 @@ int main() {
     RUN_TEST(test_micros_overflow);
     RUN_TEST(test_same_micros_noop);
     RUN_TEST(test_skipped_update_preserves_ticks);
-    RUN_TEST(test_zero_cpr_produces_inf);
+    RUN_TEST(test_zero_cpr_asserts);
     RUN_TEST(test_filter_convergence_on_reversal);
     RUN_TEST(test_split_intervals_consistent);
     RUN_TEST(test_high_rpm);

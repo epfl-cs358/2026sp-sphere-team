@@ -29,7 +29,11 @@ void BTS7960Driver::setOutput(float value) {
     }
 
     _hbridge.Enable();
-    int8_t pwm = static_cast<int8_t>(std::abs(value) * 127.0f);
+    uint8_t pwm = static_cast<uint8_t>(std::abs(value) * 255.0f);
+    if (pwm == 0) {
+        _hbridge.Disable();
+        return;
+    }
     if (value > 0.0f) {
         _hbridge.TurnLeft(pwm);
     } else {

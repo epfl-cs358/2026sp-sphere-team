@@ -9,6 +9,8 @@
 #include "Driver.h"
 #include "MotorConfig.h"
 #include "MovingAverage.h"
+#include "FIT0186.h"
+#include "debug.h"
 #include <ESP32Encoder.h>
 #include <Arduino.h>
 
@@ -18,7 +20,9 @@ public:
     FIT0186Motor(Driver& driver, EncoderPins encoderPins, uint16_t encoderCPR)
         : _driver(driver)
         , _encoderPins(encoderPins)
-        , _encoderCPR(encoderCPR) {}
+        , _encoderCPR(encoderCPR) {
+        BB8_ASSERT(encoderCPR > 0, "encoderCPR must be > 0");
+    }
 
     FIT0186Motor(Driver& driver, const MotorConfig& config)
         : FIT0186Motor(driver, config.encoderPins, config.encoderCPR) {}
@@ -40,7 +44,8 @@ public:
         int64_t deltaCount = count - _lastCount;
 
         _rawRPM = (static_cast<float>(deltaCount) / static_cast<float>(_encoderCPR))
-                  * (60.0f / dtSeconds);
+                  * (60.0f / dtSeconds)
+                  / fit0186::GEAR_RATIO;
 
         _filter.push(_rawRPM);
         _lastCount = count;
