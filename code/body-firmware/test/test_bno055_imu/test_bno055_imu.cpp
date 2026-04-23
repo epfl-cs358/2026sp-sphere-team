@@ -51,6 +51,16 @@ void custom_getCalibration(uint8_t* s, uint8_t* g, uint8_t* a, uint8_t* m) {
 
 static BNO055IMU* imu_dev;
 
+void resetWithFields(IMUField fields) {
+    delete imu_dev;
+    imu_dev = new BNO055IMU(0x28, nullptr, fields);
+    RESET_BNO055_FAKES();
+    RESET_PREFERENCES_FAKES();
+    bno_begin_fake.return_val = true;
+    imu_dev->begin();
+    RESET_BNO055_FAKES();
+}
+
 void setUp() {
     RESET_BNO055_FAKES();
     RESET_PREFERENCES_FAKES();
@@ -89,7 +99,7 @@ void test_begin_failure_returns_false() {
 
 void test_begin_restores_saved_calibration() {
     bno_begin_fake.return_val = true;
-    prefs_getBytes_fake.return_val = 22;
+    prefs_getBytes_fake.return_val = BNO055IMU::OFFSET_SIZE;
     imu_dev->begin();
     TEST_ASSERT_EQUAL_UINT(2, bno_setMode_fake.call_count);
     TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_CONFIG, bno_setMode_fake.arg0_history[0]);
@@ -100,13 +110,7 @@ void test_begin_restores_saved_calibration() {
 // --- Field Selection (4) ---
 
 void test_read_quaternion_only() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Quaternion);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Quaternion);
     imu_dev->read();
     TEST_ASSERT_EQUAL_UINT(1, bno_getQuat_fake.call_count);
     TEST_ASSERT_EQUAL_UINT(0, bno_getVector_fake.call_count);
@@ -114,13 +118,7 @@ void test_read_quaternion_only() {
 }
 
 void test_read_gyro_only() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Gyro);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Gyro);
     imu_dev->read();
     TEST_ASSERT_EQUAL_UINT(1, bno_getVector_fake.call_count);
     TEST_ASSERT_EQUAL_UINT8(VECTOR_GYROSCOPE, bno_getVector_fake.arg0_val);
@@ -128,15 +126,9 @@ void test_read_gyro_only() {
 }
 
 void test_read_all_fields() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr,
+    resetWithFields(
         IMUField::Quaternion | IMUField::Euler | IMUField::LinearAccel |
         IMUField::Gyro | IMUField::Gravity | IMUField::Calibration);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
     imu_dev->read();
     TEST_ASSERT_EQUAL_UINT(1, bno_getQuat_fake.call_count);
     TEST_ASSERT_EQUAL_UINT(4, bno_getVector_fake.call_count);
@@ -144,14 +136,7 @@ void test_read_all_fields() {
 }
 
 void test_read_euler_and_calibration_only() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr,
-        IMUField::Euler | IMUField::Calibration);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Euler | IMUField::Calibration);
     imu_dev->read();
     TEST_ASSERT_EQUAL_UINT(1, bno_getVector_fake.call_count);
     TEST_ASSERT_EQUAL_UINT8(VECTOR_EULER, bno_getVector_fake.arg0_val);
@@ -162,13 +147,7 @@ void test_read_euler_and_calibration_only() {
 // --- Data Conversion (4) ---
 
 void test_quaternion_wxyz_maps_correctly() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Quaternion);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Quaternion);
     fake_quat_return = imu::Quaternion(0.707, 0.0, 0.707, 0.0);
     bno_getQuat_fake.custom_fake = custom_getQuat;
     IMUReading reading = imu_dev->read();
@@ -179,13 +158,7 @@ void test_quaternion_wxyz_maps_correctly() {
 }
 
 void test_euler_xyz_maps_to_heading_roll_pitch() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Euler);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Euler);
     fake_vector_returns[0] = imu::Vector<3>(270.5, -45.2, 12.8);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -195,13 +168,7 @@ void test_euler_xyz_maps_to_heading_roll_pitch() {
 }
 
 void test_double_to_float_precision() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::LinearAccel);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::LinearAccel);
     fake_vector_returns[1] = imu::Vector<3>(9.80665, -0.00123, 0.00001);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -211,13 +178,7 @@ void test_double_to_float_precision() {
 }
 
 void test_gravity_maps_to_vec3() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Gravity);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Gravity);
     fake_vector_returns[3] = imu::Vector<3>(0.0, 0.0, 9.81);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -229,13 +190,7 @@ void test_gravity_maps_to_vec3() {
 // --- Quaternion Edge Cases (3) ---
 
 void test_identity_quaternion_unchanged() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Quaternion);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Quaternion);
     fake_quat_return = imu::Quaternion(1.0, 0.0, 0.0, 0.0);
     bno_getQuat_fake.custom_fake = custom_getQuat;
     IMUReading reading = imu_dev->read();
@@ -246,13 +201,7 @@ void test_identity_quaternion_unchanged() {
 }
 
 void test_near_gimbal_lock_not_corrupted() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Quaternion);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Quaternion);
     fake_quat_return = imu::Quaternion(0.5, 0.5, 0.5, 0.5);
     bno_getQuat_fake.custom_fake = custom_getQuat;
     IMUReading reading = imu_dev->read();
@@ -263,13 +212,7 @@ void test_near_gimbal_lock_not_corrupted() {
 }
 
 void test_unnormalized_quaternion_not_renormalized() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Quaternion);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Quaternion);
     fake_quat_return = imu::Quaternion(2.0, 0.0, 0.0, 0.0);
     bno_getQuat_fake.custom_fake = custom_getQuat;
     IMUReading reading = imu_dev->read();
@@ -333,14 +276,7 @@ void test_no_restore_when_no_saved_data() {
 // --- Sensor Boundaries (4) ---
 
 void test_heading_at_zero_and_near_360() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Euler);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
-
+    resetWithFields(IMUField::Euler);
     fake_vector_returns[0] = imu::Vector<3>(0.0, 0.0, 0.0);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -352,13 +288,7 @@ void test_heading_at_zero_and_near_360() {
 }
 
 void test_pitch_at_negative_extreme() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Euler);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::Euler);
     fake_vector_returns[0] = imu::Vector<3>(0.0, 0.0, -180.0);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -366,14 +296,7 @@ void test_pitch_at_negative_extreme() {
 }
 
 void test_gyro_at_max_range() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::Gyro);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
-
+    resetWithFields(IMUField::Gyro);
     fake_vector_returns[2] = imu::Vector<3>(2000.0, -2000.0, 2000.0);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();
@@ -383,13 +306,7 @@ void test_gyro_at_max_range() {
 }
 
 void test_linear_accel_near_zero_not_rounded() {
-    delete imu_dev;
-    imu_dev = new BNO055IMU(0x28, nullptr, IMUField::LinearAccel);
-    RESET_BNO055_FAKES();
-    RESET_PREFERENCES_FAKES();
-    bno_begin_fake.return_val = true;
-    imu_dev->begin();
-    RESET_BNO055_FAKES();
+    resetWithFields(IMUField::LinearAccel);
     fake_vector_returns[1] = imu::Vector<3>(0.001, 0.001, 0.001);
     bno_getVector_fake.custom_fake = custom_getVector;
     IMUReading reading = imu_dev->read();

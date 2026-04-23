@@ -10,6 +10,7 @@ class IMU {
 public:
     virtual ~IMU() = default;
 
-    // Read the latest sensor data.
+    virtual bool begin() = 0;
+
     virtual T read() = 0;
 };
