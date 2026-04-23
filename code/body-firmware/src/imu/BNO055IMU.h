@@ -9,15 +9,18 @@
 #include "IMUReading.h"
 #include <Adafruit_BNO055.h>
 #include <Preferences.h>
+#include <Arduino.h>
 #include "debug.h"
 
 class BNO055IMU : public IMU<IMUReading> {
 public:
+    static constexpr size_t OFFSET_SIZE = 22;
+    static constexpr unsigned long MODE_SETTLE_MS = 20;
     BNO055IMU(uint8_t address = 0x28, TwoWire* wire = nullptr,
               IMUField fields = IMUField::Quaternion | IMUField::Gyro | IMUField::Calibration)
         : _bno(-1, address, wire), _fields(fields) {}
 
-    bool begin() {
+    bool begin() override {
         BB8_ASSERT(!_initialized, "BNO055: begin() called twice");
 
         if (!_bno.begin(OPERATION_MODE_NDOF)) return false;
@@ -89,23 +92,25 @@ private:
     void restoreCalibration() {
         Preferences prefs;
         prefs.begin("bno055", true);
-        uint8_t buf[22];
+        uint8_t buf[OFFSET_SIZE];
         size_t len = prefs.getBytes("offsets", buf, sizeof(buf));
         prefs.end();
-        if (len == 22) {
+        if (len == OFFSET_SIZE) {
             _bno.setMode(OPERATION_MODE_CONFIG);
+            delay(MODE_SETTLE_MS);
             _bno.setSensorOffsets(buf);
             _bno.setMode(OPERATION_MODE_NDOF);
+            delay(MODE_SETTLE_MS);
         }
     }
 
     void saveCalibration() {
         BB8_ASSERT(_initialized, "BNO055: saveCalibration on uninitialized sensor");
-        uint8_t buf[22];
+        uint8_t buf[OFFSET_SIZE];
         _bno.getSensorOffsets(buf);
         Preferences prefs;
         prefs.begin("bno055", false);
-        prefs.putBytes("offsets", buf, 22);
+        prefs.putBytes("offsets", buf, OFFSET_SIZE);
         prefs.end();
     }
 };
