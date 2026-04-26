@@ -8,8 +8,10 @@
 #include <cstdint>
 
 struct DriverPins {
-    uint8_t rpwm;
-    uint8_t lpwm;
+    uint8_t l_en;
+    uint8_t r_en;
+    uint8_t l_pwm;
+    uint8_t r_pwm;
 };
 
 struct EncoderPins {

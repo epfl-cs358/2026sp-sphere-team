@@ -12,7 +12,6 @@
 class BTS7960Driver : public Driver {
 public:
     explicit BTS7960Driver(DriverPins pins);
-    BTS7960Driver(uint8_t rpwm, uint8_t lpwm);
 
     void begin() override;
     void setOutput(float value) override;
