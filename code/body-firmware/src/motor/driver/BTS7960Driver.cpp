@@ -8,13 +8,7 @@
 #include <cmath>
 
 BTS7960Driver::BTS7960Driver(DriverPins pins)
-    : BTS7960Driver(pins.rpwm, pins.lpwm) {}
-
-// BTS7960 lib constructor is (L_EN, R_EN, L_PWM, R_PWM).
-// We tie enable pins to PWM pins. If hardware has separate EN pins,
-// DriverPins and this constructor need updating.
-BTS7960Driver::BTS7960Driver(uint8_t rpwm, uint8_t lpwm)
-    : _hbridge(rpwm, lpwm, rpwm, lpwm) {}
+    : _hbridge(pins.l_en, pins.r_en, pins.l_pwm, pins.r_pwm) {}
 
 void BTS7960Driver::begin() {
     _hbridge.Enable();
