@@ -1,4 +1,5 @@
-FIRMWARE_DIR := body-firmware
+BODY_FW_DIR := body-firmware
+HEAD_FW_DIR := head-firmware
 
 # --- Prereqs ---
 
@@ -54,4 +55,5 @@ setup-firmware:
 	else \
 		echo "PlatformIO already installed."; \
 	fi
-	cd $(FIRMWARE_DIR) && pio pkg install
+	cd $(BODY_FW_DIR) && pio pkg install
+	cd $(HEAD_FW_DIR) && pio pkg install

@@ -15,7 +15,7 @@ build: build-webapp build-stream build-firmware
 setup: setup-prereqs setup-web setup-firmware
 
 clean:
-	rm -rf body-firmware/.pio
+	rm -rf body-firmware/.pio head-firmware/.pio
 	rm -rf webapp/.next webapp/node_modules/.cache
 	rm -rf stream-client/.next stream-client/node_modules/.cache
 
@@ -31,25 +31,31 @@ help:
 	@echo "    make dev-stop         Stop all dev servers (ports 3003-3005)"
 	@echo ""
 	@echo "  Testing"
-	@echo "    make test             Run all tests"
-	@echo "    make test-firmware    PlatformIO native tests"
-	@echo "    make test-firmware-head  PlatformIO tests on hardware"
-	@echo "    make test-webapp      Webapp vitest"
-	@echo "    make test-stream      Stream client vitest"
+	@echo "    make test               Run all tests"
+	@echo "    make test-firmware      All firmware native tests (body + head)"
+	@echo "    make test-firmware-body Body native tests"
+	@echo "    make test-firmware-head Head native tests"
+	@echo "    make test-firmware-body-hw  Body tests on hardware"
+	@echo "    make test-webapp        Webapp vitest"
+	@echo "    make test-stream        Stream client vitest"
 	@echo ""
 	@echo "  Building"
-	@echo "    make build            Build everything"
-	@echo "    make build-webapp     Build webapp"
-	@echo "    make build-stream     Build stream client"
-	@echo "    make build-firmware   Compile firmware (no upload)"
+	@echo "    make build              Build everything"
+	@echo "    make build-webapp       Build webapp"
+	@echo "    make build-stream       Build stream client"
+	@echo "    make build-firmware     Compile all firmware (no upload)"
+	@echo "    make build-firmware-body  Compile body firmware"
+	@echo "    make build-firmware-head  Compile head firmware"
 	@echo ""
 	@echo "  Code quality"
-	@echo "    make lint             ESLint both web projects"
-	@echo "    make typecheck        TypeScript type checking"
+	@echo "    make lint               ESLint both web projects"
+	@echo "    make typecheck          TypeScript type checking"
 	@echo ""
 	@echo "  Firmware"
-	@echo "    make flash            Compile and upload to board"
-	@echo "    make monitor          Serial monitor (115200 baud)"
+	@echo "    make flash              Upload body firmware"
+	@echo "    make flash-head         Upload head firmware"
+	@echo "    make monitor            Body serial monitor (115200)"
+	@echo "    make monitor-head       Head serial monitor (115200)"
 	@echo ""
 	@echo "  Setup"
 	@echo "    make setup            Full setup (prereqs + web + firmware)"

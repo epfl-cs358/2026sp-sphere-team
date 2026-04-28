@@ -1,28 +1,49 @@
-FIRMWARE_DIR := body-firmware
+BODY_FW_DIR := body-firmware
+HEAD_FW_DIR := head-firmware
 
-# --- Build ---
+# --- Body firmware ---
 
-.PHONY: build-firmware
+.PHONY: build-firmware-body test-firmware-body test-firmware-body-hw flash-body monitor-body
 
-build-firmware:
-	cd $(FIRMWARE_DIR) && pio run -e wemos_d1_uno32
+build-firmware-body:
+	cd $(BODY_FW_DIR) && pio run -e wemos_d1_uno32
 
-# --- Test ---
+test-firmware-body:
+	cd $(BODY_FW_DIR) && pio test -e native
 
-.PHONY: test-firmware test-firmware-head
+test-firmware-body-hw:
+	cd $(BODY_FW_DIR) && pio test -e wemos_d1_uno32
 
-test-firmware:
-	cd $(FIRMWARE_DIR) && pio test -e native
+flash-body:
+	cd $(BODY_FW_DIR) && pio run -e wemos_d1_uno32 -t upload
+
+monitor-body:
+	cd $(BODY_FW_DIR) && pio device monitor -b 115200
+
+# --- Head firmware ---
+
+.PHONY: build-firmware-head test-firmware-head flash-head monitor-head
+
+build-firmware-head:
+	cd $(HEAD_FW_DIR) && pio run -e seeed_xiao_esp32s3
 
 test-firmware-head:
-	cd $(FIRMWARE_DIR) && pio test -e wemos_d1_uno32
+	cd $(HEAD_FW_DIR) && pio test -e native
 
-# --- Flash & monitor ---
+flash-head:
+	cd $(HEAD_FW_DIR) && pio run -e seeed_xiao_esp32s3 -t upload
 
-.PHONY: flash monitor
+monitor-head:
+	cd $(HEAD_FW_DIR) && pio device monitor -b 115200
 
-flash:
-	cd $(FIRMWARE_DIR) && pio run -t upload
+# --- Composites (backward-compat aliases) ---
 
-monitor:
-	cd $(FIRMWARE_DIR) && pio device monitor -b 115200
+.PHONY: build-firmware test-firmware flash monitor
+
+build-firmware: build-firmware-body build-firmware-head
+
+test-firmware: test-firmware-body test-firmware-head
+
+flash: flash-body
+
+monitor: monitor-body
