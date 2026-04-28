@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BB-8 Head — FPV Stream</title>
+    <style>
+        body { margin: 0; background: #111; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+        h1 { margin: 12px 0 4px; font-size: 18px; }
+        #stats { font-size: 13px; color: #888; margin-bottom: 8px; }
+        canvas { max-width: 100vw; max-height: 80vh; background: #222; }
+        #controls { margin: 10px; display: flex; gap: 10px; align-items: center; }
+        select, button { font-family: monospace; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+    <h1>BB-8 Head FPV</h1>
+    <div id="stats">Connecting...</div>
+    <canvas id="view"></canvas>
+    <div id="controls">
+        <label>Resolution:
+            <select id="res">
+                <option value="VGA">VGA 640x480</option>
+                <option value="SVGA">SVGA 800x600</option>
+                <option value="XGA">XGA 1024x768</option>
+                <option value="HD">HD 1280x720</option>
+                <option value="UXGA">UXGA 1600x1200</option>
+            </select>
+        </label>
+        <label>FPS: <input id="fps" type="number" min="1" max="30" value="20" style="width:40px"></label>
+        <label>Quality: <input id="quality" type="number" min="10" max="100" value="80" style="width:40px"></label>
+        <button onclick="applyConfig()">Apply</button>
+    </div>
+    <script>
+        const HOST = location.hostname === '' ? '172.20.10.2' : location.hostname;
+        const canvas = document.getElementById('view');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        let displayFps = 0;
+        let rendering = false;
+        let latestFrame = null;
+
+        const ws = new WebSocket(`ws://${HOST}/stream`);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+            stats.textContent = 'Connected, requesting first frame...';
+            ws.send('next');
+        };
+        ws.onclose = () => { stats.textContent = 'Disconnected'; };
+        ws.onerror = () => { stats.textContent = 'Connection error'; };
+
+        ws.onmessage = (evt) => {
+            const data = new Uint8Array(evt.data);
+            if (data.length < 8) { ws.send('next'); return; }
+
+            const view = new DataView(evt.data);
+            const seq = view.getUint32(0, true);
+
+            const jpeg = data.slice(8);
+            const blob = new Blob([jpeg], { type: 'image/jpeg' });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+
+                frameCount++;
+                const now = performance.now();
+                if (now - lastFpsTime >= 1000) {
+                    displayFps = frameCount;
+                    frameCount = 0;
+                    lastFpsTime = now;
+                }
+                stats.textContent = `${img.width}x${img.height} | ${displayFps} fps | seq ${seq} | ${(jpeg.length / 1024).toFixed(1)} KB`;
+
+                // Request next frame only after this one is rendered
+                ws.send('next');
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); ws.send('next'); };
+            img.src = url;
+        };
+
+        async function applyConfig() {
+            const body = JSON.stringify({
+                resolution: document.getElementById('res').value,
+                fps: parseInt(document.getElementById('fps').value),
+                quality: parseInt(document.getElementById('quality').value)
+            });
+            try {
+                const resp = await fetch(`http://${HOST}/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body
+                });
+                const json = await resp.json();
+                console.log('Config updated:', json);
+            } catch (e) {
+                console.error('Config failed:', e);
+            }
+        }
+    </script>
+</body>
+</html>
