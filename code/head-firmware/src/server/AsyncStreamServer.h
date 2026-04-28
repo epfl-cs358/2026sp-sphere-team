@@ -45,7 +45,6 @@ public:
         });
 
         _server.begin();
-        Serial.println("Server started");
     }
 
     uint8_t connectedClients() override {
@@ -103,8 +102,6 @@ private:
             if (parseConfigJson(reinterpret_cast<const char*>(data), total, newConfig)) {
                 _config = newConfig;
                 if (_configCallback) _configCallback(_config);
-                Serial.printf("Config updated: %s %ufps q%u\n",
-                    resolutionToString(_config.resolution), _config.fps, _config.quality);
 
                 char json[256];
                 buildStatusJson(json, sizeof(json), _config,
@@ -123,7 +120,6 @@ private:
                    AwsEventType type, void*, uint8_t* data, size_t len) {
         switch (type) {
             case WS_EVT_CONNECT:
-                Serial.printf("WS client %u connected\n", client->id());
                 for (auto& c : server->getClients()) {
                     if (c.id() != client->id()) {
                         c.close();
@@ -131,8 +127,6 @@ private:
                 }
                 break;
             case WS_EVT_DISCONNECT:
-                Serial.printf("WS client %u disconnected\n", client->id());
-                _frameRequested = false;
                 break;
             case WS_EVT_DATA:
                 // Client sends "next" to request the next frame

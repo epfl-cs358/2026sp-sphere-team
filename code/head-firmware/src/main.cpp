@@ -19,7 +19,6 @@ static OnboardLED led(PIN_LED);
 
 static unsigned long startTime = 0;
 static bool cameraReady = false;
-static uint32_t frameCount = 0;
 
 static int getRSSI() { return wifi.getRSSI(); }
 static unsigned long getUptime() { return millis() - startTime; }
@@ -28,7 +27,7 @@ static AsyncStreamServer server(config, getRSSI, getUptime);
 
 void setup() {
     Serial.begin(115200);
-    delay(2000); // wait for USB CDC serial
+    delay(2000);
     startTime = millis();
 
     Serial.println("\n=== BB-8 Head Firmware ===");
@@ -36,7 +35,7 @@ void setup() {
     led.begin();
     led.setState(LEDState::Connecting);
     led.update(millis());
-    Serial.println("Starting WiFi provisioning...");
+
     if (!wifi.begin()) {
         Serial.println("WiFi connection failed");
         led.setState(LEDState::Error);
@@ -47,15 +46,14 @@ void setup() {
     led.setState(LEDState::Ready);
     led.update(millis());
 
-    // Start server before camera so /status is always reachable
     server.begin(80);
-    Serial.println("Server started on port 80");
+    Serial.println("Server started");
 
-    if (!camera.begin(config)) {
-        Serial.println("Camera init FAILED");
-    } else {
+    if (camera.begin(config)) {
         cameraReady = true;
         Serial.println("Camera ready");
+    } else {
+        Serial.println("Camera init FAILED");
     }
 
     server.onConfigChange([](const StreamConfig& newConfig) {
@@ -86,11 +84,6 @@ void loop() {
     const uint8_t* frame = camera.capture(len);
     if (frame && len > 0) {
         server.broadcastFrame(frame, len);
-        frameCount++;
-        if (frameCount % 100 == 0) {
-            Serial.printf("Frame %u, %zu bytes, %u clients\n",
-                frameCount, len, server.connectedClients());
-        }
     }
     camera.release();
 }

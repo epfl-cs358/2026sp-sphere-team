@@ -16,8 +16,7 @@ public:
         WiFi.disconnect(true, true);
         delay(100);
         WiFi.setHostname("sphere-head");
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
+        WiFi.begin("Alessandro", "00000000");
 
         Serial.printf("Connecting to %s", WIFI_SSID);
         unsigned long start = millis();
