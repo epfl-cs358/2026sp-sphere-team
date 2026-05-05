@@ -7,7 +7,7 @@
 #include "debug.h"
 #include <cmath>
 
-BTS7960Driver::BTS7960Driver(DriverPins pins)
+BTS7960Driver::BTS7960Driver(BTS7960Pins pins)
     : _hbridge(pins.l_en, pins.r_en, pins.l_pwm, pins.r_pwm) {}
 
 void BTS7960Driver::begin() {

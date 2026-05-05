@@ -22,7 +22,7 @@ static BTS7960Driver* driver;
 void setUp() {
     RESET_BTS7960_FAKES();
     _assert_fired = false;
-    driver = new BTS7960Driver(DriverPins{.l_en = 3, .r_en = 4, .l_pwm = 1, .r_pwm = 2});
+    driver = new BTS7960Driver(BTS7960Pins{.l_en = 3, .r_en = 4, .l_pwm = 1, .r_pwm = 2});
     RESET_BTS7960_FAKES();
 }
 
