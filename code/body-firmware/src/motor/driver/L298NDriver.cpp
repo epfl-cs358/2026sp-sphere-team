@@ -22,21 +22,21 @@ void L298NDriver::setOutput(float value) {
     uint8_t pwm = static_cast<uint8_t>(std::abs(value) * 255.0f);
 
     if (pwm == 0) {
-        digitalWrite(_pins.fwd, LOW);
-        digitalWrite(_pins.rev, LOW);
+        analogWrite(_pins.fwd, 0);
+        analogWrite(_pins.rev, 0);
         return;
     }
 
     if (value > 0.0f) {
         analogWrite(_pins.fwd, pwm);
-        digitalWrite(_pins.rev, LOW);
+        analogWrite(_pins.rev, 0);
     } else {
-        digitalWrite(_pins.fwd, LOW);
+        analogWrite(_pins.fwd, 0);
         analogWrite(_pins.rev, pwm);
     }
 }
 
 void L298NDriver::brake() {
-    digitalWrite(_pins.fwd, HIGH);
-    digitalWrite(_pins.rev, HIGH);
+    analogWrite(_pins.fwd, 255);
+    analogWrite(_pins.rev, 255);
 }
