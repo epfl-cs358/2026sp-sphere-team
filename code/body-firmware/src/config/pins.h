@@ -5,25 +5,9 @@
 
 #pragma once
 
-#include "MotorConfig.h"
-#include "FIT0186.h"
+#include "L298NDriver.h"
 
-// TODO: Replace placeholder pin values with actual wiring
-// 0xFF = unconfigured sentinel
-inline constexpr MotorConfig MOTOR0 {
-    .driverPins = {.l_en = 0xFF, .r_en = 0xFF, .l_pwm = 0xFF, .r_pwm = 0xFF},
-    .encoderPins = {.a = 0xFF, .b = 0xFF},
-    .encoderCPR = fit0186::ENCODER_CPR
-};
-
-inline constexpr MotorConfig MOTOR1 {
-    .driverPins = {.l_en = 0xFF, .r_en = 0xFF, .l_pwm = 0xFF, .r_pwm = 0xFF},
-    .encoderPins = {.a = 0xFF, .b = 0xFF},
-    .encoderCPR = fit0186::ENCODER_CPR
-};
-
-inline constexpr MotorConfig MOTOR2 {
-    .driverPins = {.l_en = 0xFF, .r_en = 0xFF, .l_pwm = 0xFF, .r_pwm = 0xFF},
-    .encoderPins = {.a = 0xFF, .b = 0xFF},
-    .encoderCPR = fit0186::ENCODER_CPR
-};
+// L298N channel B (IN3/IN4)
+inline constexpr L298NPins MOTOR0_PINS = {.fwd = 27, .rev = 14};
+inline constexpr L298NPins MOTOR1_PINS = {.fwd = 16, .rev = 17};
+inline constexpr L298NPins MOTOR2_PINS = {.fwd = 18, .rev = 19};
