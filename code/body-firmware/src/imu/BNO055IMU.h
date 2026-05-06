@@ -38,32 +38,32 @@ public:
 
         if (_fields & IMUField::Quaternion) {
             auto q = _bno.getQuat();
-            r.orientation = {static_cast<float>(q.w()), static_cast<float>(q.x()),
-                            static_cast<float>(q.y()), static_cast<float>(q.z())};
+            r.orientation = Quat{static_cast<float>(q.w()), static_cast<float>(q.x()),
+                                 static_cast<float>(q.y()), static_cast<float>(q.z())};
         }
 
         if (_fields & IMUField::Euler) {
-            auto v = _bno.getVector(VECTOR_EULER);
-            r.euler = {static_cast<float>(v.x()), static_cast<float>(v.y()),
-                      static_cast<float>(v.z())};
-        }
-
-        if (_fields & IMUField::LinearAccel) {
-            auto v = _bno.getVector(VECTOR_LINEARACCEL);
-            r.linearAccel = {static_cast<float>(v.x()), static_cast<float>(v.y()),
+            auto v = _bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+            r.euler = Euler{static_cast<float>(v.x()), static_cast<float>(v.y()),
                             static_cast<float>(v.z())};
         }
 
+        if (_fields & IMUField::LinearAccel) {
+            auto v = _bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+            r.linearAccel = Vec3{static_cast<float>(v.x()), static_cast<float>(v.y()),
+                                 static_cast<float>(v.z())};
+        }
+
         if (_fields & IMUField::Gyro) {
-            auto v = _bno.getVector(VECTOR_GYROSCOPE);
-            r.gyro = {static_cast<float>(v.x()), static_cast<float>(v.y()),
-                     static_cast<float>(v.z())};
+            auto v = _bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+            r.gyro = Vec3{static_cast<float>(v.x()), static_cast<float>(v.y()),
+                          static_cast<float>(v.z())};
         }
 
         if (_fields & IMUField::Gravity) {
-            auto v = _bno.getVector(VECTOR_GRAVITY);
-            r.gravity = {static_cast<float>(v.x()), static_cast<float>(v.y()),
-                        static_cast<float>(v.z())};
+            auto v = _bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
+            r.gravity = Vec3{static_cast<float>(v.x()), static_cast<float>(v.y()),
+                             static_cast<float>(v.z())};
         }
 
         if (_fields & IMUField::Calibration) {
