@@ -22,7 +22,7 @@ public:
         }
     }
 
-    void update(float dt) {
+    void update(float dt) override {
         for (auto* m : _motors) m->update();
 
         float s0 = _pids[0]->compute(_targetRPMs[0], _motors[0]->getFilteredRPM(), dt);
@@ -30,10 +30,6 @@ public:
         float s2 = _pids[2]->compute(_targetRPMs[2], _motors[2]->getFilteredRPM(), dt);
 
         setMotorSpeeds(s0, s1, s2);
-    }
-
-    void update() override {
-        update(0.01f);
     }
 
     void stop() override {

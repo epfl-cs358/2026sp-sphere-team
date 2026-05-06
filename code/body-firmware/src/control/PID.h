@@ -20,7 +20,7 @@ public:
         }
 
         float derivative = 0.0f;
-        if (!_firstCompute) {
+        if (!_firstCompute && dt > 1e-6f) {
             derivative = -(measurement - _prevMeasurement) / dt;
         }
         _firstCompute = false;
