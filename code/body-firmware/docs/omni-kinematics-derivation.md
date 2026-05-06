@@ -47,17 +47,13 @@ The velocity at the wheel contact point has two parts:
 1. **Translation**: the robot's linear velocity (vx, vy)
 2. **Rotation**: tangential velocity from the robot spinning = R × ω
 
-In our frame (x-forward, y-right, z-down), for wheel i at angle θ_i (CW from front), projecting onto the wheel's rolling direction:
+In our frame (x-forward, y-right, z-down), for wheel i at angle θ_i (CW from front), the rolling direction perpendicular to the radial axle is t_i = (-sin(θ_i), cos(θ_i)). Projecting the contact-point velocity onto this direction:
 
 ```
-v_wheel_i = sin(θ_i) × vx + cos(θ_i) × vy + R × ω
+v_wheel_i = -sin(θ_i) × vx + cos(θ_i) × vy + R × ω
 ```
 
-The `sin(θ_i) × vx + cos(θ_i) × vy` term projects the linear velocity onto the rolling direction. The `+R × ω` term adds the rotational contribution: positive ω (CW) makes all wheels spin in the same positive direction.
-
-The sign differences from the z-up convention:
-- `cos(θ_i) × vy` is now `+` (y-right instead of y-left)
-- `R × ω` is now `+` (positive ω = CW instead of CCW)
+The `-sin(θ_i) × vx + cos(θ_i) × vy` term projects the linear velocity onto the rolling direction. The `+R × ω` term adds the rotational contribution: positive ω (CW) makes all wheels spin in the same positive direction.
 
 The wheel angular velocity is:
 
@@ -80,7 +76,7 @@ At α = 0 (vertical wheels, flat floor), cos(0) = 1 and this reduces to the stan
 Combining steps 1 and 2:
 
 ```
-ω_i = (1 / (r × cos(α))) × [sin(θ_i) × vx + cos(θ_i) × vy + R × ω]
+ω_i = (1 / (r × cos(α))) × [-sin(θ_i) × vx + cos(θ_i) × vy + R × ω]
 ```
 
 ### Step 4: Expand per wheel
@@ -99,24 +95,24 @@ sin(0°) = 0,  cos(0°) = 1
 ```
 sin(120°) = √3/2 ≈ 0.866,  cos(120°) = -1/2 = -0.5
 
-ω₁ = (1 / (r × cos(α))) × [0.866 × vx + (-0.5) × vy + R × ω]
-ω₁ = (1 / (r × cos(α))) × [0.866 × vx - 0.5 × vy + R × ω]
+ω₁ = (1 / (r × cos(α))) × [-0.866 × vx + (-0.5) × vy + R × ω]
+ω₁ = (1 / (r × cos(α))) × [-0.866 × vx - 0.5 × vy + R × ω]
 ```
 
 **Motor 2 (back-left, θ = 240°):**
 ```
 sin(240°) = -√3/2 ≈ -0.866,  cos(240°) = -1/2 = -0.5
 
-ω₂ = (1 / (r × cos(α))) × [-0.866 × vx + (-0.5) × vy + R × ω]
-ω₂ = (1 / (r × cos(α))) × [-0.866 × vx - 0.5 × vy + R × ω]
+ω₂ = (1 / (r × cos(α))) × [0.866 × vx + (-0.5) × vy + R × ω]
+ω₂ = (1 / (r × cos(α))) × [0.866 × vx - 0.5 × vy + R × ω]
 ```
 
 ### Step 5: Matrix form
 
 ```
 ┌ ω₀ ┐         1          ┌  0      1    R ┐   ┌ vx ┐
-│ ω₁ │ = ───────────── ×  │  √3/2  -1/2  R │ × │ vy │
-└ ω₂ ┘   r × cos(α)       └ -√3/2  -1/2  R ┘   └ ω  ┘
+│ ω₁ │ = ───────────── ×  │ -√3/2  -1/2  R │ × │ vy │
+└ ω₂ ┘   r × cos(α)       └  √3/2  -1/2  R ┘   └ ω  ┘
 ```
 
 ### Step 6: Convert to RPM
@@ -131,8 +127,8 @@ RPM_i = ω_i × 60 / (2π)
 
 ```
 ω₀ = 0                           ← motor 0 is still (correct: front wheel)
-ω₁ = +0.866 × vx / (r × cos(α)) ← positive
-ω₂ = -0.866 × vx / (r × cos(α)) ← negative
+ω₁ = -0.866 × vx / (r × cos(α)) ← negative
+ω₂ = +0.866 × vx / (r × cos(α)) ← positive
 ```
 
 Motors 1 and 2 spin at equal magnitude, opposite directions. Forward motion comes from their combined horizontal thrust. Motor 0 contributes nothing. ✓

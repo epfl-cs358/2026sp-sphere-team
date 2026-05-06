@@ -18,8 +18,8 @@ public:
     // Accept a high-level velocity command and compute per-wheel targets.
     virtual void drive(const TVelocity& velocity) = 0;
 
-    // Run per-wheel PID. Call every control loop iteration.
-    virtual void update() = 0;
+    // Run per-wheel PID. Call every control loop iteration with elapsed dt in seconds.
+    virtual void update(float dt) = 0;
 
     // Emergency stop — zero all motors immediately.
     virtual void stop() = 0;

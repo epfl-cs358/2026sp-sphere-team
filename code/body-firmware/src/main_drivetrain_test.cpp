@@ -5,7 +5,6 @@
 #include "OmniDrivetrain.h"
 #include "PID.h"
 
-static constexpr float DT = 0.01f;
 static constexpr unsigned long LOOP_INTERVAL_MS = 10;
 
 static DrivetrainConfig config = {
@@ -36,6 +35,7 @@ void setup() {
     motor0.begin();
     motor1.begin();
     motor2.begin();
+    lastLoopTime = millis();
     Serial.println("Drivetrain test ready. Send: <vx> <vy> <omega_deg>");
     Serial.println("Send 'stop' to brake all.");
 }

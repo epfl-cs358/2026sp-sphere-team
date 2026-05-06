@@ -32,7 +32,7 @@ void test_pure_forward() {
     OmniKinematics kin(cfg);
     auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
 
-    float expectedRPM1 = toRPM(20.0f * SQRT3_2);
+    float expectedRPM1 = toRPM(-20.0f * SQRT3_2);
     float expectedRPM2 = -expectedRPM1;
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[0]);

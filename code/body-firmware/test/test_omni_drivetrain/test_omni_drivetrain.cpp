@@ -31,12 +31,10 @@ void tearDown() {}
 
 void test_drive_stores_target_rpms() {
     OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
-    OmniKinematics kin(testConfig());
 
     BodyVelocity v = {1.0f, 0.0f, 0.0f};
     dt.drive(v);
 
-    (void)kin.toWheelRPMs(v);
     // drive() alone should not call setSpeed — that's update()'s job
     TEST_ASSERT_EQUAL(0, m0.setSpeedCallCount);
     TEST_ASSERT_EQUAL(0, m1.setSpeedCallCount);
