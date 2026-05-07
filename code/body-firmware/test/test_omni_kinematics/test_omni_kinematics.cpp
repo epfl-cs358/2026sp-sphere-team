@@ -123,6 +123,57 @@ void test_combined_velocity() {
     }
 }
 
+void test_pure_backward() {
+    DrivetrainConfig cfg = defaultConfig();
+    cfg.maxRPM = 300.0f;
+    OmniKinematics kin(cfg);
+
+    auto fwd = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
+    auto bwd = kin.toWheelRPMs({-1.0f, 0.0f, 0.0f});
+
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -fwd[i], bwd[i]);
+    }
+}
+
+void test_pure_strafe_left() {
+    DrivetrainConfig cfg = defaultConfig();
+    cfg.maxRPM = 300.0f;
+    OmniKinematics kin(cfg);
+
+    auto right = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
+    auto left = kin.toWheelRPMs({0.0f, -1.0f, 0.0f});
+
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -right[i], left[i]);
+    }
+}
+
+void test_pure_ccw_rotation() {
+    OmniKinematics kin(defaultConfig());
+    auto cw = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
+    auto ccw = kin.toWheelRPMs({0.0f, 0.0f, -1.0f});
+
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -cw[i], ccw[i]);
+    }
+}
+
+void test_combined_3_axis() {
+    DrivetrainConfig cfg = defaultConfig();
+    cfg.maxRPM = 1000.0f;
+    OmniKinematics kin(cfg);
+
+    auto vx = kin.toWheelRPMs({0.1f, 0.0f, 0.0f});
+    auto vy = kin.toWheelRPMs({0.0f, 0.1f, 0.0f});
+    auto vw = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
+    auto combined = kin.toWheelRPMs({0.1f, 0.1f, 1.0f});
+
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, vx[i] + vy[i] + vw[i], combined[i]);
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_velocity);
@@ -132,5 +183,9 @@ int main() {
     RUN_TEST(test_saturation_scaling);
     RUN_TEST(test_tilt_angle_effect);
     RUN_TEST(test_combined_velocity);
+    RUN_TEST(test_pure_backward);
+    RUN_TEST(test_pure_strafe_left);
+    RUN_TEST(test_pure_ccw_rotation);
+    RUN_TEST(test_combined_3_axis);
     return UNITY_END();
 }

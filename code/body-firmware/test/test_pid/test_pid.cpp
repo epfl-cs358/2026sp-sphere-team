@@ -150,6 +150,46 @@ void test_combined_pid() {
     TEST_ASSERT_FLOAT_WITHIN(TOL, 1.185f, out2);
 }
 
+void test_zero_dt_returns_last_output() {
+    PID pid(1.0f, 0.0f, 0.0f, -1.0f, 1.0f);
+    float first = pid.compute(1.0f, 0.5f, 0.01f);
+    float second = pid.compute(2.0f, 0.0f, 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, first, second);
+}
+
+void test_sub_threshold_dt_returns_last_output() {
+    PID pid(1.0f, 0.0f, 0.0f, -1.0f, 1.0f);
+    float first = pid.compute(1.0f, 0.5f, 0.01f);
+    float second = pid.compute(2.0f, 0.0f, 1e-5f);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, first, second);
+}
+
+void test_large_dt_output_finite_and_clamped() {
+    PID pid(0.0f, 1.0f, 0.0f, -1.0f, 1.0f);
+    float out = pid.compute(10.0f, 0.0f, 100.0f);
+    TEST_ASSERT_TRUE(std::isfinite(out));
+    TEST_ASSERT_TRUE(out >= -1.0f && out <= 1.0f);
+}
+
+void test_anti_windup_fast_recovery() {
+    PID pid(0.0f, 1.0f, 0.0f, -1.0f, 1.0f);
+    float dt = 0.1f;
+
+    for (int i = 0; i < 100; ++i) {
+        pid.compute(10.0f, 0.0f, dt);
+    }
+
+    float out = 1.0f;
+    int steps = 0;
+    for (int i = 0; i < 10; ++i) {
+        out = pid.compute(-10.0f, 0.0f, dt);
+        steps++;
+        if (out < 0.0f) break;
+    }
+    TEST_ASSERT_TRUE(steps <= 3);
+    TEST_ASSERT_TRUE(out < 0.0f);
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -176,6 +216,11 @@ int main() {
     RUN_TEST(test_zero_error_integral_stays);
 
     RUN_TEST(test_combined_pid);
+
+    RUN_TEST(test_zero_dt_returns_last_output);
+    RUN_TEST(test_sub_threshold_dt_returns_last_output);
+    RUN_TEST(test_large_dt_output_finite_and_clamped);
+    RUN_TEST(test_anti_windup_fast_recovery);
 
     return UNITY_END();
 }

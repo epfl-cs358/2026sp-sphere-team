@@ -133,6 +133,86 @@ void test_zero_velocity_zero_speed() {
     TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, m2.lastSpeed);
 }
 
+static constexpr float PLANT_GAIN = 50.0f;
+
+static void setupPlantMotors(MockMotor& a, MockMotor& b, MockMotor& c) {
+    a.plantMode = true; a.plantGain = PLANT_GAIN;
+    b.plantMode = true; b.plantGain = PLANT_GAIN;
+    c.plantMode = true; c.plantGain = PLANT_GAIN;
+}
+
+void test_pid_convergence_with_feedback() {
+    MockMotor fm0, fm1, fm2;
+    setupPlantMotors(fm0, fm1, fm2);
+
+    PID fp0(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp1(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp2(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+
+    OmniDrivetrain dt(fm0, fm1, fm2, testConfig(), fp0, fp1, fp2);
+    dt.drive({0.0f, 0.1f, 0.0f});
+
+    for (int i = 0; i < 500; i++) {
+        dt.update(0.01f);
+    }
+
+    OmniKinematics kin(testConfig());
+    auto targetRPMs = kin.toWheelRPMs({0.0f, 0.1f, 0.0f});
+
+    MockMotor* motors[] = {&fm0, &fm1, &fm2};
+    for (int i = 0; i < 3; i++) {
+        float expectedSpeed = targetRPMs[i] / PLANT_GAIN;
+        if (expectedSpeed > 1.0f) expectedSpeed = 1.0f;
+        if (expectedSpeed < -1.0f) expectedSpeed = -1.0f;
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, expectedSpeed, motors[i]->lastSpeed);
+    }
+}
+
+void test_stop_then_update_motors_stay_zero() {
+    MockMotor fm0, fm1, fm2;
+    setupPlantMotors(fm0, fm1, fm2);
+
+    PID fp0(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp1(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp2(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+
+    OmniDrivetrain dt(fm0, fm1, fm2, testConfig(), fp0, fp1, fp2);
+
+    dt.drive({0.0f, 0.1f, 0.0f});
+    for (int i = 0; i < 200; i++) dt.update(0.01f);
+
+    dt.stop();
+
+    for (int i = 0; i < 200; i++) dt.update(0.01f);
+
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, fm0.lastSpeed);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, fm1.lastSpeed);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, fm2.lastSpeed);
+}
+
+void test_rapid_direction_reversal() {
+    MockMotor fm0, fm1, fm2;
+    setupPlantMotors(fm0, fm1, fm2);
+
+    PID fp0(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp1(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+    PID fp2(0.01f, 0.01f, 0.0f, -1.0f, 1.0f);
+
+    OmniDrivetrain dt(fm0, fm1, fm2, testConfig(), fp0, fp1, fp2);
+
+    dt.drive({0.0f, 0.1f, 0.0f});
+    for (int i = 0; i < 500; i++) dt.update(0.01f);
+    float m1_forward = fm1.lastSpeed;
+
+    dt.drive({0.0f, -0.1f, 0.0f});
+    for (int i = 0; i < 500; i++) dt.update(0.01f);
+    float m1_backward = fm1.lastSpeed;
+
+    TEST_ASSERT_TRUE(m1_forward != 0.0f);
+    TEST_ASSERT_TRUE(m1_backward != 0.0f);
+    TEST_ASSERT_TRUE(m1_forward * m1_backward < 0.0f);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_drive_stores_target_rpms);
@@ -142,5 +222,8 @@ int main() {
     RUN_TEST(test_stop_brakes_all_motors);
     RUN_TEST(test_stop_resets_pid);
     RUN_TEST(test_zero_velocity_zero_speed);
+    RUN_TEST(test_pid_convergence_with_feedback);
+    RUN_TEST(test_stop_then_update_motors_stay_zero);
+    RUN_TEST(test_rapid_direction_reversal);
     return UNITY_END();
 }
