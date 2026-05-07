@@ -17,7 +17,10 @@ public:
 
     float getRPM() override { return rpmToReturn; }
 
-    float getFilteredRPM() override { return filteredRpmToReturn; }
+    float getFilteredRPM() override {
+        if (plantMode) return lastSpeed * plantGain;
+        return filteredRpmToReturn;
+    }
 
     bool beginCalled = false;
     int updateCallCount = 0;
@@ -26,6 +29,8 @@ public:
     bool brakeCalled = false;
     float rpmToReturn = 0.0f;
     float filteredRpmToReturn = 0.0f;
+    bool plantMode = false;
+    float plantGain = 250.0f;
 
     void resetMock() {
         beginCalled = false;
@@ -35,5 +40,7 @@ public:
         brakeCalled = false;
         rpmToReturn = 0.0f;
         filteredRpmToReturn = 0.0f;
+        plantMode = false;
+        plantGain = 250.0f;
     }
 };
