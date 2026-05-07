@@ -1,17 +1,28 @@
 #pragma once
 
+#include <cmath>
+#include "debug.h"
+
 class PID {
 public:
     PID(float kp, float ki, float kd, float outputMin, float outputMax)
         : _kp(kp), _ki(ki), _kd(kd),
           _outputMin(outputMin), _outputMax(outputMax),
-          _integral(0.0f), _prevMeasurement(0.0f), _firstCompute(true) {}
+          _integral(0.0f), _prevMeasurement(0.0f), _lastOutput(0.0f),
+          _firstCompute(true) {}
 
     float compute(float setpoint, float measurement, float dt) {
+        BB8_ASSERT(std::isfinite(setpoint), "PID: setpoint must be finite");
+        BB8_ASSERT(std::isfinite(measurement), "PID: measurement must be finite");
+        BB8_ASSERT(dt >= 0.0f, "PID: dt must be non-negative");
+
+        if (dt < 1e-4f) return _lastOutput;
+
         float error = setpoint - measurement;
 
         _integral += error * dt;
 
+        // Integral clamping anti-windup
         if (_ki != 0.0f) {
             float integralMax = _outputMax / _ki;
             float integralMin = _outputMin / _ki;
@@ -20,7 +31,7 @@ public:
         }
 
         float derivative = 0.0f;
-        if (!_firstCompute && dt > 1e-6f) {
+        if (!_firstCompute) {
             derivative = -(measurement - _prevMeasurement) / dt;
         }
         _firstCompute = false;
@@ -31,12 +42,14 @@ public:
         if (output < _outputMin) output = _outputMin;
 
         _prevMeasurement = measurement;
+        _lastOutput = output;
         return output;
     }
 
     void reset() {
         _integral = 0.0f;
         _prevMeasurement = 0.0f;
+        _lastOutput = 0.0f;
         _firstCompute = true;
     }
 
@@ -49,5 +62,6 @@ private:
 
     float _integral;
     float _prevMeasurement;
+    float _lastOutput;
     bool _firstCompute;
 };
