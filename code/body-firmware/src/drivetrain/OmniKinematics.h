@@ -2,12 +2,19 @@
 
 #include <array>
 #include <cmath>
+#include "debug.h"
 #include "DrivetrainConfig.h"
 #include "BodyVelocity.h"
 
 class OmniKinematics {
 public:
-    explicit OmniKinematics(const DrivetrainConfig& config) : _config(config) {}
+    explicit OmniKinematics(const DrivetrainConfig& config) : _config(config) {
+        BB8_ASSERT(config.wheelRadius > 0.0f, "OmniKinematics: wheelRadius must be > 0");
+        BB8_ASSERT(config.robotRadius > 0.0f, "OmniKinematics: robotRadius must be > 0");
+        BB8_ASSERT(config.maxRPM > 0.0f, "OmniKinematics: maxRPM must be > 0");
+        BB8_ASSERT(std::abs(cosf(config.tiltAngle)) > 1e-6f,
+                   "OmniKinematics: tiltAngle too close to pi/2");
+    }
 
     std::array<float, 3> toWheelRPMs(const BodyVelocity& v) const {
         constexpr float SIN_0   =  0.0f;
