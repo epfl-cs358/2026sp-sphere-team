@@ -8,7 +8,7 @@
 #include <cstdint>
 
 namespace fit0186 {
-    inline constexpr uint16_t ENCODER_CPR = 700;
+    inline constexpr uint16_t ENCODER_CPR = 2800;
     inline constexpr float GEAR_RATIO = 43.8f;
     inline constexpr uint16_t NO_LOAD_RPM = 251;
 }

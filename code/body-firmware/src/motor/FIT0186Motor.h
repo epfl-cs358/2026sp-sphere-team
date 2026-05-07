@@ -44,8 +44,7 @@ public:
         int64_t deltaCount = count - _lastCount;
 
         _rawRPM = (static_cast<float>(deltaCount) / static_cast<float>(_encoderCPR))
-                  * (60.0f / dtSeconds)
-                  / fit0186::GEAR_RATIO;
+                  * (60.0f / dtSeconds);
 
         _filter.push(_rawRPM);
         _lastCount = count;
