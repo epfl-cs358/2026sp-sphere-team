@@ -32,6 +32,10 @@ public:
         setMotorSpeeds(s0, s1, s2);
     }
 
+    std::array<float, 3> getTargetRPMs() const {
+        return {_targetRPMs[0], _targetRPMs[1], _targetRPMs[2]};
+    }
+
     void stop() override {
         for (auto* m : _motors) m->brake();
         for (auto* p : _pids) p->reset();

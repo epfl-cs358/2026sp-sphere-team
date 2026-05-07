@@ -5,9 +5,10 @@
 
 class PID {
 public:
-    PID(float kp, float ki, float kd, float outputMin, float outputMax)
+    PID(float kp, float ki, float kd, float outputMin, float outputMax,
+        float deadband = 0.0f)
         : _kp(kp), _ki(ki), _kd(kd),
-          _outputMin(outputMin), _outputMax(outputMax),
+          _outputMin(outputMin), _outputMax(outputMax), _deadband(deadband),
           _integral(0.0f), _prevMeasurement(0.0f), _lastOutput(0.0f),
           _firstCompute(true) {}
 
@@ -17,6 +18,11 @@ public:
         BB8_ASSERT(dt >= 0.0f, "PID: dt must be non-negative");
 
         if (dt < 1e-4f) return _lastOutput;
+
+        if (_deadband > 0.0f && std::abs(setpoint) < 1e-6f && std::abs(measurement) < _deadband) {
+            reset();
+            return 0.0f;
+        }
 
         float error = setpoint - measurement;
 
@@ -60,6 +66,7 @@ private:
     float _outputMin;
     float _outputMax;
 
+    float _deadband;
     float _integral;
     float _prevMeasurement;
     float _lastOutput;
