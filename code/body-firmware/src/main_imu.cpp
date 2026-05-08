@@ -13,13 +13,27 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "BNO055IMU.h"
+#include "pins.h"
 
 static IMUField activeFields = IMUField::Euler | IMUField::Calibration;
 static BNO055IMU sensor(0x28, &Wire, IMUField::Quaternion | IMUField::Euler |
                      IMUField::Gyro | IMUField::LinearAccel | IMUField::Calibration);
 
+static void killMotorPins() {
+    constexpr uint8_t pins[] = {
+        MOTOR0_PINS.fwd, MOTOR0_PINS.rev,
+        MOTOR1_PINS.fwd, MOTOR1_PINS.rev,
+        MOTOR2_PINS.fwd, MOTOR2_PINS.rev,
+    };
+    for (auto p : pins) {
+        pinMode(p, OUTPUT);
+        digitalWrite(p, LOW);
+    }
+}
+
 void setup() {
     Serial.begin(115200);
+    killMotorPins();
     Wire.begin(26, 25);
 
     Serial.println("BNO055 IMU test — initializing...");
