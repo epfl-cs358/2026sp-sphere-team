@@ -34,11 +34,11 @@ static void killMotorPins() {
 void setup() {
     Serial.begin(115200);
     killMotorPins();
-    Wire.begin(26, 25);
+    Wire.begin(21, 22);
 
     Serial.println("BNO055 IMU test — initializing...");
     if (!sensor.begin()) {
-        Serial.println("ERR: BNO055 not detected. Check wiring (SDA=26, SCL=25).");
+        Serial.println("ERR: BNO055 not detected. Check wiring (SDA=21, SCL=22).");
         while (true) delay(1000);
     }
     Serial.println("BNO055 ready. Commands: all, euler, quat, gyro, cal, accel");

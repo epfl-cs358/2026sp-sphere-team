@@ -50,8 +50,8 @@ constexpr UBaseType_t CONTROL_TASK_PRIORITY = 4;
 constexpr BaseType_t  CONTROL_TASK_CORE     = 1;
 
 // I2C pins for BNO055 (matches main_imu.cpp)
-constexpr int I2C_SDA = 26;
-constexpr int I2C_SCL = 25;
+constexpr int I2C_SDA = 21;
+constexpr int I2C_SCL = 22;
 
 DrivetrainConfig g_config = RobotConstants::drivetrainConfig();
 

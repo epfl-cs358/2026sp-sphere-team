@@ -10,8 +10,8 @@
 #include "FIT0186.h"
 
 inline constexpr L298NPins MOTOR0_PINS = {.fwd = 14, .rev = 27};
-inline constexpr L298NPins MOTOR1_PINS = {.fwd = 17, .rev = 16};
-inline constexpr L298NPins MOTOR2_PINS = {.fwd = 19, .rev = 18};
+inline constexpr L298NPins MOTOR1_PINS = {.fwd = 16, .rev = 17};
+inline constexpr L298NPins MOTOR2_PINS = {.fwd = 25, .rev = 26};
 
 inline constexpr EncoderPins MOTOR0_ENCODER_PINS = {.a = 34, .b = 35};
 inline constexpr EncoderPins MOTOR1_ENCODER_PINS = {.a = 2, .b = 4};
