@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_task_wdt.h>
 
 #include "config/wifi_credentials.h"
 
@@ -25,18 +26,23 @@
 #include "RobotConstants.h"
 #include "pins.h"
 
-#include "CommandLatch.h"
+#include "sync/CommandLatch.h"
 #include "WebSocketCommandProducer.h"
 #include "PassthroughDrivetrainController.h"
 
 namespace {
 
-constexpr uint32_t STALENESS_TIMEOUT_MS = 200;
-constexpr uint32_t CONTROL_PERIOD_MS    = 10;     // 100 Hz
-constexpr uint16_t WS_PORT              = 81;
-constexpr uint32_t WIFI_TIMEOUT_MS      = 30000;
+// Loop timing constants live in RobotConstants (shared with the rest of the
+// drivetrain stack); deployment-only constants stay local.
+using RobotConstants::STALENESS_TIMEOUT_MS;
+using RobotConstants::CONTROL_PERIOD_MS;
 
-constexpr uint32_t CONTROL_TASK_STACK_BYTES = 4096;
+constexpr uint16_t WS_PORT                 = 80;
+constexpr uint32_t WIFI_TIMEOUT_MS         = 30000;
+constexpr uint32_t WIFI_OFFLINE_REBOOT_MS  = 30000;  // reboot if offline this long
+constexpr uint32_t TWDT_TIMEOUT_S          = 1;      // tighter than Arduino default ~5s
+
+constexpr uint32_t CONTROL_TASK_STACK_BYTES = 8192;
 constexpr UBaseType_t CONTROL_TASK_PRIORITY = 4;
 constexpr BaseType_t  CONTROL_TASK_CORE     = 1;
 
@@ -64,13 +70,35 @@ BNO055IMU g_imu(0x28, &Wire,
                 IMUField::Quaternion | IMUField::Euler |
                 IMUField::Gyro | IMUField::Calibration);
 
-CommandLatch<BodyVelocity> g_latch;
-WebSocketCommandProducer    g_producer(g_latch, WS_PORT);
-PassthroughDrivetrainController g_controller(g_drivetrain, g_imu);
+// Constructed in setup() after WiFi/IMU/Wire are up, so FreeRTOS objects
+// (queue inside the latch, server/task inside the producer) are created
+// in a known-good runtime context rather than during C++ static init.
+CommandLatch<BodyVelocity>*      g_latch      = nullptr;
+WebSocketCommandProducer*        g_producer   = nullptr;
+PassthroughDrivetrainController* g_controller = nullptr;
+
+volatile uint32_t g_lastWifiConnectedMs = 0;
+
+void onWifiEvent(WiFiEvent_t event) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            g_lastWifiConnectedMs = millis();
+            Serial.print("[wifi] got IP ");
+            Serial.println(WiFi.localIP());
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            Serial.println("[wifi] disconnected");
+            break;
+        default:
+            break;
+    }
+}
 
 void connectWifi() {
     WiFi.mode(WIFI_STA);
     WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+    WiFi.onEvent(onWifiEvent);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     Serial.print("Connecting to WiFi");
@@ -89,6 +117,11 @@ void connectWifi() {
 }
 
 void controlTask(void* /*arg*/) {
+    // Subscribe to the Task Watchdog. If this loop hangs (e.g. I2C bus
+    // stretch on the IMU), TWDT panics and resets — preferable to motors
+    // stuck at last PWM with no operator recovery.
+    esp_task_wdt_add(NULL);
+
     BodyVelocity last_known{};
     uint32_t     last_fresh_ms = 0;
     bool         have_seen_fresh = false;
@@ -96,9 +129,12 @@ void controlTask(void* /*arg*/) {
     TickType_t lastWake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(CONTROL_PERIOD_MS);
 
+    UBaseType_t stack_hwm_min = static_cast<UBaseType_t>(-1);
+    uint32_t    hwm_iter = 0;
+
     while (true) {
         // 1) Pull freshest command from latch.
-        auto fresh = g_latch.read();
+        auto fresh = g_latch->read();
         const uint32_t now = millis();
         if (fresh.has_value()) {
             last_known      = *fresh;
@@ -106,9 +142,11 @@ void controlTask(void* /*arg*/) {
             have_seen_fresh = true;
         }
 
-        // 2) Compute drive command via dead-window policy.
+        // 2) Drive command via staleness alone. The producer's connected()
+        //    flag can lie on half-open TCP; age < 200ms is the actual safety
+        //    net so we don't gate on connected() anymore.
         BodyVelocity drive_cmd{0.0f, 0.0f, 0.0f};
-        if (g_producer.connected() && have_seen_fresh) {
+        if (have_seen_fresh) {
             const uint32_t age = now - last_fresh_ms;
             if (age < STALENESS_TIMEOUT_MS) {
                 const float scale = 1.0f - static_cast<float>(age) /
@@ -121,11 +159,22 @@ void controlTask(void* /*arg*/) {
 
         // 3) Tick controller.
         IMUReading imu_reading = g_imu.read();
-        g_controller.update(drive_cmd, imu_reading);
+        g_controller->update(drive_cmd, imu_reading);
 
         // 4) Tick motor controllers (RPM PID).
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
         g_drivetrain.update(dt);
+
+        esp_task_wdt_reset();
+
+        if (hwm_iter < 100) {
+            UBaseType_t hwm = uxTaskGetStackHighWaterMark(NULL);
+            if (hwm < stack_hwm_min) stack_hwm_min = hwm;
+            if (++hwm_iter == 100) {
+                Serial.printf("[ctrl] stack HWM min over 100 iters: %u words free\n",
+                              stack_hwm_min);
+            }
+        }
 
         vTaskDelayUntil(&lastWake, period);
     }
@@ -151,7 +200,15 @@ void setup() {
 
     connectWifi();
 
-    g_producer.start();
+    g_latch      = new CommandLatch<BodyVelocity>();
+    g_producer   = new WebSocketCommandProducer(*g_latch, WS_PORT);
+    g_controller = new PassthroughDrivetrainController(g_drivetrain, g_imu);
+
+    g_producer->start();
+
+    // Tighten the global Task Watchdog timeout. Affects IDLE tasks too, but
+    // 1s is comfortably above their normal slack.
+    esp_task_wdt_init(TWDT_TIMEOUT_S, true);
 
     xTaskCreatePinnedToCore(
         &controlTask,
@@ -166,7 +223,12 @@ void setup() {
 }
 
 void loop() {
-    // Everything runs in dedicated FreeRTOS tasks. Keep loop() empty so the
-    // default Arduino loopTask doesn't compete with our control loop.
+    // Housekeeping only: WiFi reboot watchdog. Control runs in dedicated tasks.
+    if (WiFi.status() == WL_CONNECTED) {
+        g_lastWifiConnectedMs = millis();
+    } else if (millis() - g_lastWifiConnectedMs > WIFI_OFFLINE_REBOOT_MS) {
+        Serial.println("FATAL: WiFi offline >30s — restarting.");
+        ESP.restart();
+    }
     vTaskDelay(pdMS_TO_TICKS(1000));
 }

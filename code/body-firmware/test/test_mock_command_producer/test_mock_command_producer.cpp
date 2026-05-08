@@ -4,7 +4,7 @@
 
 #include <unity.h>
 #include "MockCommandProducer.h"
-#include "CommandLatch.h"
+#include "sync/CommandLatch.h"
 #include "BodyVelocity.h"
 
 static CommandLatch<BodyVelocity>* latch = nullptr;

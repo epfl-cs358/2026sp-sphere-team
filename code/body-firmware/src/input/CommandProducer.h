@@ -5,16 +5,12 @@
 
 #pragma once
 
+// CommandProducer — the transport-health half of a producer. Lifecycle
+// (start/stop) is a separate opt-in interface (util/Lifecycle.h) so a polled
+// producer (e.g. a local gamepad) can implement just this.
 class CommandProducer {
 public:
     virtual ~CommandProducer() = default;
-
-    // Bring the producer online: start any FreeRTOS task, open sockets, etc.
-    virtual void start() = 0;
-
-    // Bring the producer offline. Must be synchronous: caller can rely on the
-    // task having exited and resources being released by the time stop() returns.
-    virtual void stop() = 0;
 
     // True iff the producer's transport is currently connected and capable of
     // delivering fresh commands. Cheap to call from any context.

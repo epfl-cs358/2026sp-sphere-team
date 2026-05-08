@@ -6,10 +6,11 @@
 #pragma once
 
 #include "CommandProducer.h"
-#include "CommandLatch.h"
+#include "Lifecycle.h"
+#include "sync/CommandLatch.h"
 
 template <typename T>
-class MockCommandProducer : public CommandProducer {
+class MockCommandProducer : public CommandProducer, public Lifecycle {
 public:
     explicit MockCommandProducer(CommandLatch<T>& latch) : _latch(latch) {}
 

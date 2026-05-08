@@ -36,3 +36,28 @@ make dev      # start all services
 | `make setup-web` | Install pnpm dependencies |
 | `make setup-firmware` | Install PlatformIO + firmware libs |
 | `make clean` | Remove build artifacts |
+
+## Body firmware: teleop pipeline
+
+Body firmware ships a teleop pipeline:
+
+```
+WebSocket client  ──text frame──▶  WebSocketCommandProducer (Core 0)
+                                            │
+                                            ▼
+                                     CommandLatch  (latest-wins, length-1)
+                                            │
+                                            ▼
+                                  controlTask @ 100 Hz (Core 1)
+                                            │
+                                            ▼
+                                  PassthroughDrivetrainController
+                                            │
+                                            ▼
+                                       OmniDrivetrain
+```
+
+- Wire format: text frame `"vx,vy,omega"` (m/s, m/s, rad/s). Trailing fields are ignored for forward-compat.
+- Build env: `pio run -e robot` (USB flash).
+- Safety: 200 ms staleness ramp-to-zero, 1 s task watchdog on control + WS tasks, WiFi-offline reboot at 30 s.
+- Auth: none — plaintext `ws://` on port 80, intended for trusted-LAN operation only.

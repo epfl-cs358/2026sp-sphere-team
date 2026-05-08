@@ -18,12 +18,11 @@ public:
         lastDrive = v;
         driveCallCount++;
     }
-    void update(float /*dt*/) override { updateCallCount++; }
+    void update(float /*dt*/) override {}
     void stop() override { stopCallCount++; }
 
     BodyVelocity lastDrive{};
     int driveCallCount = 0;
-    int updateCallCount = 0;
     int stopCallCount = 0;
 
 private:

@@ -10,14 +10,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <esp_task_wdt.h>
 
-#include <cstdlib>                      // strtof
+#include "CommandFrameParser.h"
 
 namespace {
 constexpr uint32_t kTaskStackBytes = 8192;
 constexpr UBaseType_t kTaskPriority = 2;
 constexpr BaseType_t kTaskCore = 0;
-constexpr TickType_t kLoopDelayMs = 2;
+constexpr TickType_t kLoopDelayMs = 1;
 constexpr TickType_t kStopTimeoutMs = 1000;
 }
 
@@ -28,7 +29,10 @@ WebSocketCommandProducer::WebSocketCommandProducer(CommandLatch<BodyVelocity>& l
       _taskHandle(nullptr),
       _exitSemaphore(nullptr),
       _running(false),
-      _connected(false) {}
+      _connected(false),
+      _activeClient(kNoClient),
+      _frameCount(0),
+      _parseFailCount(0) {}
 
 WebSocketCommandProducer::~WebSocketCommandProducer() {
     // Defensive: if user forgot to call stop(), do it now.
@@ -43,6 +47,8 @@ void WebSocketCommandProducer::start() {
     _server->onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
         this->onWsEvent(num, static_cast<uint8_t>(type), payload, length);
     });
+    // Detect half-open TCP within ~6s: ping every 2s, fail after 1s + 2 retries.
+    _server->enableHeartbeat(2000, 1000, 2);
 
     _exitSemaphore = xSemaphoreCreateBinary();
     _running = true;
@@ -91,61 +97,83 @@ void WebSocketCommandProducer::taskTrampoline(void* arg) {
 }
 
 void WebSocketCommandProducer::taskBody() {
+    // Subscribe to the global Task Watchdog so a hang in _server->loop()
+    // (library bug, deadlock) triggers a panic+reset rather than silently
+    // freezing teleop with WiFi still up.
+    esp_task_wdt_add(NULL);
+
     while (_running.load()) {
         if (_server) _server->loop();
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(kLoopDelayMs));
     }
+    esp_task_wdt_delete(NULL);
     if (_exitSemaphore) {
         xSemaphoreGive(static_cast<SemaphoreHandle_t>(_exitSemaphore));
     }
     vTaskDelete(NULL);
 }
 
-void WebSocketCommandProducer::onWsEvent(uint8_t /*clientNum*/, uint8_t type,
+void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
                                          const uint8_t* payload, size_t length) {
     auto wsType = static_cast<WStype_t>(type);
     switch (wsType) {
-        case WStype_CONNECTED:
-            _connected = true;
-            Serial.println("[ws] client connected");
+        case WStype_CONNECTED: {
+            // Single-client policy: accept the first client, reject the rest.
+            // Two operators sending commands would oscillate the latch.
+            uint8_t expected = kNoClient;
+            if (_activeClient.compare_exchange_strong(expected, clientNum)) {
+                _connected = true;
+                Serial.printf("[ws] client %u connected\n", clientNum);
+            } else {
+                Serial.printf("[ws] client %u rejected (active=%u)\n", clientNum, expected);
+                if (_server) _server->disconnect(clientNum);
+            }
             break;
+        }
         case WStype_DISCONNECTED:
-            _connected = false;
-            Serial.println("[ws] client disconnected");
+            // Only clear state if the disconnecting client is the active one.
+            // A rejected client's later disconnect must not unset _connected.
+            if (_activeClient.load() == clientNum) {
+                _activeClient = kNoClient;
+                _connected = false;
+                Serial.printf("[ws] client %u disconnected\n", clientNum);
+            }
             break;
         case WStype_TEXT: {
-            // Payload is NOT null-terminated; copy with explicit length.
-            // Expected format: "vx,vy,omega" (newline optional/trailing).
-            constexpr size_t kMaxFrameLen = 64;
-            if (length == 0 || length >= kMaxFrameLen) {
-                logParseFail("len");
+            // Drop frames from non-active clients (defense in depth: server
+            // disconnect on rejection isn't always immediate).
+            if (_activeClient.load() != clientNum) return;
+
+            auto result = parseCommandFrame(payload, length);
+            if (!result.ok()) {
+                _parseFailCount.fetch_add(1, std::memory_order_relaxed);
+                switch (result.error) {
+                    case FrameParseError::EmptyOrTooLong: logParseFail("len");   break;
+                    case FrameParseError::InvalidVx:      logParseFail("vx");    break;
+                    case FrameParseError::InvalidVy:      logParseFail("vy");    break;
+                    case FrameParseError::InvalidOmega:   logParseFail("omega"); break;
+                    default: break;
+                }
                 return;
             }
 
-            char buf[kMaxFrameLen];
-            for (size_t i = 0; i < length; ++i) buf[i] = static_cast<char>(payload[i]);
-            buf[length] = '\0';
+            _latch.write(result.value);
 
-            char* p = buf;
-            char* end = nullptr;
-
-            float vx = strtof(p, &end);
-            if (end == p || *end != ',') { logParseFail("vx"); return; }
-            p = end + 1;
-
-            float vy = strtof(p, &end);
-            if (end == p || *end != ',') { logParseFail("vy"); return; }
-            p = end + 1;
-
-            float omega = strtof(p, &end);
-            if (end == p) { logParseFail("omega"); return; }
-            // Any trailing chars (whitespace, newline) ignored.
-
-            _latch.write({vx, vy, omega});
+            // Periodic counter dump every 1000 frames (~10s @ 100 Hz).
+            uint32_t count = _frameCount.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (count % 1000 == 0) {
+                Serial.printf("[ws] frames=%u parse_fail=%u\n",
+                              count,
+                              _parseFailCount.load(std::memory_order_relaxed));
+            }
             break;
         }
+        case WStype_ERROR:
+            Serial.printf("[ws] error event from client %u\n", clientNum);
+            break;
         default:
-            // ERROR, BIN, FRAGMENT_*, PING, PONG — ignored.
+            // BIN, FRAGMENT_*, PING, PONG — ignored.
             break;
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <freertos/FreeRTOS.h>
+#include <cassert>
 #include <cstring>
 #include <cstdlib>
 
@@ -15,6 +16,9 @@ struct StubQueue {
 typedef StubQueue* QueueHandle_t;
 
 inline QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t itemSize) {
+    // The stub only models length-1 overwrite-style queues. Catch any future
+    // misuse at test time rather than letting it pass here and break on device.
+    assert(length == 1);
     auto* q = new StubQueue;
     q->length = length;
     q->itemSize = itemSize;
@@ -30,7 +34,11 @@ inline BaseType_t xQueueOverwrite(QueueHandle_t q, const void* item) {
     return pdTRUE;
 }
 
-inline BaseType_t xQueueReceive(QueueHandle_t q, void* out, TickType_t /*ticksToWait*/) {
+inline BaseType_t xQueueReceive(QueueHandle_t q, void* out, TickType_t ticksToWait) {
+    // Stub is single-threaded; blocking semantics are not modelled. Any
+    // ticksToWait > 0 would silently return immediately and look like a
+    // success — flag it loudly instead.
+    assert(ticksToWait == 0);
     if (!q->hasItem) return pdFALSE;
     std::memcpy(out, q->slot, q->itemSize);
     q->hasItem = false;
