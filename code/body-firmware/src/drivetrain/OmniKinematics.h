@@ -29,9 +29,9 @@ public:
 
         float R = _config.robotRadius;
 
-        float w0 = scale * (-SIN_0   * v.vx + COS_0   * v.vy + R * v.omega);
-        float w1 = scale * (-SIN_120 * v.vx + COS_120 * v.vy + R * v.omega);
-        float w2 = scale * (-SIN_240 * v.vx + COS_240 * v.vy + R * v.omega);
+        float w0 = scale * (-SIN_0   * v.vx - COS_0   * v.vy - R * v.omega);
+        float w1 = scale * (-SIN_120 * v.vx - COS_120 * v.vy - R * v.omega);
+        float w2 = scale * (-SIN_240 * v.vx - COS_240 * v.vy - R * v.omega);
 
         constexpr float RAD_TO_RPM = 60.0f / (2.0f * static_cast<float>(M_PI));
         std::array<float, 3> rpms = {w0 * RAD_TO_RPM, w1 * RAD_TO_RPM, w2 * RAD_TO_RPM};

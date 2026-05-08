@@ -41,14 +41,15 @@ void test_pure_forward() {
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, fabsf(rpms[1]), fabsf(rpms[2]));
 }
 
-void test_pure_strafe_right() {
+void test_pure_strafe_left() {
     DrivetrainConfig cfg = defaultConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
+    // vy=+1 = strafe left
     auto rpms = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
 
-    float rpm0 = toRPM(20.0f);
-    float rpm12 = toRPM(-10.0f);
+    float rpm0 = toRPM(-20.0f);
+    float rpm12 = toRPM(10.0f);
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm0, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm12, rpms[1]);
@@ -56,11 +57,12 @@ void test_pure_strafe_right() {
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, fabsf(rpms[0]) * 0.5f, fabsf(rpms[1]));
 }
 
-void test_pure_cw_rotation() {
+void test_pure_ccw_rotation() {
     OmniKinematics kin(defaultConfig());
+    // omega=+1 = CCW from above
     auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
 
-    float expectedRPM = toRPM(2.0f);
+    float expectedRPM = toRPM(-2.0f);
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[1]);
@@ -78,8 +80,8 @@ void test_saturation_scaling() {
     }
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 100.0f, maxAbs);
 
-    float unsaturated0 = toRPM(20.0f);
-    float unsaturated1 = toRPM(-10.0f);
+    float unsaturated0 = toRPM(-20.0f);
+    float unsaturated1 = toRPM(10.0f);
     float expectedRatio = unsaturated1 / unsaturated0;
     float actualRatio = rpms[1] / rpms[0];
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRatio, actualRatio);
@@ -136,26 +138,26 @@ void test_pure_backward() {
     }
 }
 
-void test_pure_strafe_left() {
+void test_pure_strafe_right() {
     DrivetrainConfig cfg = defaultConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
 
-    auto right = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
-    auto left = kin.toWheelRPMs({0.0f, -1.0f, 0.0f});
+    auto left = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
+    auto right = kin.toWheelRPMs({0.0f, -1.0f, 0.0f});
 
     for (int i = 0; i < 3; i++) {
-        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -right[i], left[i]);
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -left[i], right[i]);
     }
 }
 
-void test_pure_ccw_rotation() {
+void test_pure_cw_rotation() {
     OmniKinematics kin(defaultConfig());
-    auto cw = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
-    auto ccw = kin.toWheelRPMs({0.0f, 0.0f, -1.0f});
+    auto ccw = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
+    auto cw = kin.toWheelRPMs({0.0f, 0.0f, -1.0f});
 
     for (int i = 0; i < 3; i++) {
-        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -cw[i], ccw[i]);
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -ccw[i], cw[i]);
     }
 }
 
@@ -178,14 +180,14 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_velocity);
     RUN_TEST(test_pure_forward);
-    RUN_TEST(test_pure_strafe_right);
-    RUN_TEST(test_pure_cw_rotation);
+    RUN_TEST(test_pure_strafe_left);
+    RUN_TEST(test_pure_ccw_rotation);
     RUN_TEST(test_saturation_scaling);
     RUN_TEST(test_tilt_angle_effect);
     RUN_TEST(test_combined_velocity);
     RUN_TEST(test_pure_backward);
-    RUN_TEST(test_pure_strafe_left);
-    RUN_TEST(test_pure_ccw_rotation);
+    RUN_TEST(test_pure_strafe_right);
+    RUN_TEST(test_pure_cw_rotation);
     RUN_TEST(test_combined_3_axis);
     return UNITY_END();
 }
