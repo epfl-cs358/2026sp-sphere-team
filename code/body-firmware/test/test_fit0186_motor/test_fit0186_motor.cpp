@@ -48,8 +48,8 @@ void test_rpm_calculation() {
     motor->_encoder._count = 29;
     motor->update();
 
-    // expected: (29 / 700.0) * (60.0 / 0.01) / 43.8 = output-shaft RPM
-    float expected = (29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    // expected: (29 / 700.0) * (60.0 / 0.01) = encoder-shaft RPM
+    float expected = (29.0f / 700.0f) * (60.0f / 0.01f);
     TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
@@ -67,7 +67,7 @@ void test_reverse_direction() {
     _set_micros(10000);
     motor->_encoder._count = -29;
     motor->update();
-    float expected = (-29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    float expected = (-29.0f / 700.0f) * (60.0f / 0.01f);
     TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
     TEST_ASSERT_TRUE(motor->getRPM() < 0.0f);
 }
@@ -85,7 +85,7 @@ void test_micros_overflow() {
     motor->_encoder._count = 29;
     motor->update();
 
-    float expected = (29.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    float expected = (29.0f / 700.0f) * (60.0f / 0.01f);
     TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
@@ -105,7 +105,7 @@ void test_skipped_update_preserves_ticks() {
 
     _set_micros(10000);  // 10ms
     motor->update();  // should see full 100 tick delta
-    float expected = (100.0f / 700.0f) * (60.0f / 0.01f) / fit0186::GEAR_RATIO;
+    float expected = (100.0f / 700.0f) * (60.0f / 0.01f);
     TEST_ASSERT_FLOAT_WITHIN(0.1f, expected, motor->getRPM());
 }
 
@@ -152,8 +152,8 @@ void test_split_intervals_consistent() {
     motor->update();
     float rpm2 = motor->getRPM();
 
-    // Output-shaft: (350/700) * (60/0.5) / 43.8 ≈ 1.37 RPM
-    float expected = 60.0f / fit0186::GEAR_RATIO;
+    // Encoder-shaft: (350/700) * (60/0.5) = 60 RPM
+    float expected = 60.0f;
     TEST_ASSERT_FLOAT_WITHIN(0.01f, expected, rpm1);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, expected, rpm2);
 }
@@ -163,7 +163,7 @@ void test_high_rpm() {
     _set_micros(100);
     motor->_encoder._count = 700;
     motor->update();
-    float expected = (700.0f / 700.0f) * (60.0f / 0.0001f) / fit0186::GEAR_RATIO;
+    float expected = (700.0f / 700.0f) * (60.0f / 0.0001f);
     TEST_ASSERT_FLOAT_WITHIN(10.0f, expected, motor->getRPM());
     TEST_ASSERT_TRUE(std::isfinite(motor->getRPM()));
 }

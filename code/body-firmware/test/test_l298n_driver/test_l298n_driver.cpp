@@ -17,7 +17,7 @@ DEFINE_FAKE_VOID_FUNC(digitalWrite, uint8_t, uint8_t);
 DEFINE_FAKE_VOID_FUNC(analogWrite, uint8_t, uint8_t);
 
 static L298NDriver* driver;
-static constexpr L298NPins TEST_PINS{.in1 = 5, .in2 = 6, .ena = 7};
+static constexpr L298NPins TEST_PINS{.fwd = 5, .rev = 6};
 
 void setUp() {
     RESET_ARDUINO_FAKES();
@@ -32,73 +32,77 @@ void tearDown() {
 
 void test_begin_sets_pin_modes() {
     driver->begin();
-    TEST_ASSERT_EQUAL(3, pinMode_fake.call_count);
+    TEST_ASSERT_EQUAL(2, pinMode_fake.call_count);
     TEST_ASSERT_EQUAL_UINT8(5, pinMode_fake.arg0_history[0]);
     TEST_ASSERT_EQUAL_UINT8(OUTPUT, pinMode_fake.arg1_history[0]);
     TEST_ASSERT_EQUAL_UINT8(6, pinMode_fake.arg0_history[1]);
     TEST_ASSERT_EQUAL_UINT8(OUTPUT, pinMode_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(7, pinMode_fake.arg0_history[2]);
-    TEST_ASSERT_EQUAL_UINT8(OUTPUT, pinMode_fake.arg1_history[2]);
 }
 
 void test_full_forward() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(1.0f);
-    // IN1=HIGH, IN2=LOW
-    TEST_ASSERT_EQUAL(2, digitalWrite_fake.call_count);
-    TEST_ASSERT_EQUAL_UINT8(5, digitalWrite_fake.arg0_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(6, digitalWrite_fake.arg0_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
-    // ENA=255
-    TEST_ASSERT_EQUAL(1, analogWrite_fake.call_count);
-    TEST_ASSERT_EQUAL_UINT8(7, analogWrite_fake.arg0_val);
-    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_full_reverse() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(-1.0f);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_history[1]);
 }
 
 void test_half_forward() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(0.5f);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_half_reverse() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(-0.5f);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_history[1]);
 }
 
 void test_coast() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(0.0f);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_brake() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->brake();
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[1]);
+    TEST_ASSERT_EQUAL(2, analogWrite_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT8(5, analogWrite_fake.arg0_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, analogWrite_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(255, analogWrite_fake.arg1_history[1]);
 }
 
 void test_direction_switch() {
@@ -106,19 +110,16 @@ void test_direction_switch() {
     driver->setOutput(0.5f);
     RESET_ARDUINO_FAKES();
     driver->setOutput(-0.5f);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_history[1]);
 }
 
 void test_dead_zone() {
     driver->begin();
     RESET_ARDUINO_FAKES();
     driver->setOutput(0.001f);
-    // pwm truncates to 0 -> coast
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_recover_after_coast() {
@@ -127,9 +128,8 @@ void test_recover_after_coast() {
     driver->setOutput(0.0f);
     RESET_ARDUINO_FAKES();
     driver->setOutput(0.5f);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
-    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL_UINT8(127, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_recover_after_brake() {
@@ -137,10 +137,9 @@ void test_recover_after_brake() {
     driver->brake();
     RESET_ARDUINO_FAKES();
     driver->setOutput(0.8f);
-    TEST_ASSERT_EQUAL_UINT8(HIGH, digitalWrite_fake.arg1_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(LOW, digitalWrite_fake.arg1_history[1]);
     uint8_t expected = static_cast<uint8_t>(0.8f * 255.0f);
-    TEST_ASSERT_EQUAL_UINT8(expected, analogWrite_fake.arg1_val);
+    TEST_ASSERT_EQUAL_UINT8(expected, analogWrite_fake.arg1_history[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, analogWrite_fake.arg1_history[1]);
 }
 
 void test_assert_passes_at_boundaries() {

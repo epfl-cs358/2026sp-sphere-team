@@ -38,6 +38,13 @@ DECLARE_FAKE_VOID_FUNC(bno_setSensorOffsets, const uint8_t*);
 
 class Adafruit_BNO055 {
 public:
+    static constexpr adafruit_vector_type_t VECTOR_ACCELEROMETER = ::VECTOR_ACCELEROMETER;
+    static constexpr adafruit_vector_type_t VECTOR_MAGNETOMETER  = ::VECTOR_MAGNETOMETER;
+    static constexpr adafruit_vector_type_t VECTOR_GYROSCOPE     = ::VECTOR_GYROSCOPE;
+    static constexpr adafruit_vector_type_t VECTOR_EULER         = ::VECTOR_EULER;
+    static constexpr adafruit_vector_type_t VECTOR_LINEARACCEL   = ::VECTOR_LINEARACCEL;
+    static constexpr adafruit_vector_type_t VECTOR_GRAVITY       = ::VECTOR_GRAVITY;
+
     Adafruit_BNO055(int32_t sensorID = -1, uint8_t address = 0x28, TwoWire* theWire = nullptr) {}
     bool begin(uint8_t mode = OPERATION_MODE_NDOF) { return bno_begin(mode); }
     void setExtCrystalUse(bool usextal) { bno_setExtCrystalUse(usextal); }
