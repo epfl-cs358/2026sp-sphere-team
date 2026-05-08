@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_task_wdt.h>
@@ -41,6 +42,8 @@ constexpr uint16_t WS_PORT                 = 80;
 constexpr uint32_t WIFI_TIMEOUT_MS         = 30000;
 constexpr uint32_t WIFI_OFFLINE_REBOOT_MS  = 30000;  // reboot if offline this long
 constexpr uint32_t TWDT_TIMEOUT_S          = 1;      // tighter than Arduino default ~5s
+constexpr uint32_t LOOP_TICK_MS            = 100;    // 10 Hz housekeeping (OTA + wifi)
+constexpr const char* OTA_HOSTNAME         = "bb8-robot";
 
 constexpr uint32_t CONTROL_TASK_STACK_BYTES = 8192;
 constexpr UBaseType_t CONTROL_TASK_PRIORITY = 4;
@@ -92,6 +95,28 @@ void onWifiEvent(WiFiEvent_t event) {
         default:
             break;
     }
+}
+
+void initOta() {
+    ArduinoOTA.setHostname(OTA_HOSTNAME);
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+
+    ArduinoOTA.onStart([]() {
+        // Stop accepting new commands. Once the producer is gone, the staleness
+        // ramp in controlTask will drive motors to zero within 200 ms before
+        // the firmware actually overwrites flash.
+        Serial.println("[ota] update starting; halting teleop");
+        if (g_producer) g_producer->stop();
+    });
+    ArduinoOTA.onEnd([]() {
+        Serial.println("[ota] update complete; rebooting");
+    });
+    ArduinoOTA.onError([](ota_error_t err) {
+        Serial.printf("[ota] error %u\n", err);
+    });
+
+    ArduinoOTA.begin();
+    Serial.printf("[ota] ready on %s.local\n", OTA_HOSTNAME);
 }
 
 void connectWifi() {
@@ -206,6 +231,8 @@ void setup() {
 
     g_producer->start();
 
+    initOta();
+
     // Tighten the global Task Watchdog timeout. Affects IDLE tasks too, but
     // 1s is comfortably above their normal slack.
     esp_task_wdt_init(TWDT_TIMEOUT_S, true);
@@ -223,12 +250,15 @@ void setup() {
 }
 
 void loop() {
-    // Housekeeping only: WiFi reboot watchdog. Control runs in dedicated tasks.
+    // Housekeeping: OTA poll + WiFi reboot watchdog. Control runs in dedicated
+    // tasks. Tick at 10 Hz so OTA initiate requests are answered promptly.
+    ArduinoOTA.handle();
+
     if (WiFi.status() == WL_CONNECTED) {
         g_lastWifiConnectedMs = millis();
     } else if (millis() - g_lastWifiConnectedMs > WIFI_OFFLINE_REBOOT_MS) {
         Serial.println("FATAL: WiFi offline >30s — restarting.");
         ESP.restart();
     }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
 }

@@ -58,6 +58,17 @@ WebSocket client  ──text frame──▶  WebSocketCommandProducer (Core 0)
 ```
 
 - Wire format: text frame `"vx,vy,omega"` (m/s, m/s, rad/s). Trailing fields are ignored for forward-compat.
-- Build env: `pio run -e robot` (USB flash).
+- Build env: `pio run -e robot` (USB flash) or `pio run -e robot_ota -t upload` (OTA).
 - Safety: 200 ms staleness ramp-to-zero, 1 s task watchdog on control + WS tasks, WiFi-offline reboot at 30 s.
 - Auth: none — plaintext `ws://` on port 80, intended for trusted-LAN operation only.
+
+## OTA updates
+
+The `[env:robot_ota]` PlatformIO env flashes the device over WiFi via ArduinoOTA. Setup:
+
+1. Set `OTA_PASSWORD` in `body-firmware/src/config/wifi_credentials.h` (gitignored).
+2. Export the same password in your shell: `export OTA_PASSWORD='your-password'`.
+3. `pio run -e robot_ota -t upload` — uploads to `bb8-robot.local` (mDNS) by default.
+4. If `.local` name resolution fails, override with `pio run -e robot_ota -t upload --upload-port=<robot-ip>`.
+
+OTA `onStart` halts the producer task before flash is overwritten so motors ramp to zero via the staleness window.
