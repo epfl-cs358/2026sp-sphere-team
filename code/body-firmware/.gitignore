@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# WiFi credentials — do not commit
+src/config/wifi_credentials.h
