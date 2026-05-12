@@ -196,8 +196,11 @@ void setup() {
     g_motor2.begin();
 
     if (!g_imu.begin()) {
-        Serial.println("FATAL: BNO055 init failed — restarting.");
-        ESP.restart();
+        // Degraded mode: skip producer/controller/control-task creation and
+        // return. loop() keeps calling OtaSafeMode::tick() so the chip stays
+        // reachable for an OTA reflash that fixes the wiring or driver.
+        Serial.println("[imu] init failed — entering OTA-only degraded mode.");
+        return;
     }
 
     g_latch      = new CommandLatch<BodyVelocity>();
