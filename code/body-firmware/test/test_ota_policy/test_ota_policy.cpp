@@ -65,6 +65,24 @@ void test_reboot_just_past_threshold_fires() {
     TEST_ASSERT_TRUE(shouldRebootForOffline(false, false, 30001, 0, 30000));
 }
 
+// millis() wraps every ~49.7 days. Unsigned subtraction handles this
+// correctly by language guarantee, but pin the contract so a well-meaning
+// "fix" to make the subtraction signed can't silently break recovery.
+
+void test_mark_valid_handles_millis_wraparound() {
+    // boot=UINT32_MAX-100, now=10 → elapsed = 111 ms (wrapped). Not enough.
+    TEST_ASSERT_FALSE(shouldMarkValid(10, UINT32_MAX - 100, false, 30000));
+    // boot=UINT32_MAX-100, now=30000 → elapsed = 30101 ms. Should fire.
+    TEST_ASSERT_TRUE(shouldMarkValid(30000, UINT32_MAX - 100, false, 30000));
+}
+
+void test_reboot_handles_millis_wraparound() {
+    // last=UINT32_MAX-100, now=10 → elapsed = 111 ms. Below 30s threshold,
+    // so we must NOT reboot just because the clock wrapped.
+    TEST_ASSERT_FALSE(shouldRebootForOffline(false, false, 10,
+                                             UINT32_MAX - 100, 30000));
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -81,6 +99,9 @@ int main() {
     RUN_TEST(test_reboot_below_threshold_holds);
     RUN_TEST(test_reboot_at_threshold_holds);
     RUN_TEST(test_reboot_just_past_threshold_fires);
+
+    RUN_TEST(test_mark_valid_handles_millis_wraparound);
+    RUN_TEST(test_reboot_handles_millis_wraparound);
 
     return UNITY_END();
 }
