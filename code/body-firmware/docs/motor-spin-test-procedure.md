@@ -31,28 +31,54 @@ L298N GND must be connected to ESP32 GND.
 
 Encoder VCC → 3.3V, GND → GND.
 
+## Wheel layout (pull config)
+
+Per `RobotConstants::drivetrainConfig()`:
+
+| Motor | Position    | Wheel azimuth |
+|-------|-------------|---------------|
+| 0     | back        | 180°          |
+| 1     | front-right | 300°          |
+| 2     | front-left  |  60°          |
+
 ## Flashing
+
+### First time (USB)
 
 1. `cd code/body-firmware`
 2. Plug in the Wemos D1 UNO32 via USB
 3. Run:
    ```
-   pio run -e wemos_d1_uno32 -t upload
+   pio run -e motor_test -t upload
    ```
 4. Wait for `SUCCESS` — if it fails with a connection error, hold the BOOT button on the board while it tries to connect, release once upload starts
 
-## Running the Test
+### Subsequent flashes (OTA, no USB)
 
-1. Open serial monitor:
-   ```
-   pio device monitor -b 115200
-   ```
-2. Confirm you see:
-   ```
-   Motor+encoder test ready. Send: <motor 0-2> <speed -1.0 to 1.0>
-   Send 'stop' to brake all, 'rpm' to toggle RPM display.
-   ```
-3. Type commands in the serial monitor and press Enter
+`main_motor_test.cpp` uses `OtaSafeMode` with hostname `bb8-robot` (shared across every firmware variant), so once the chip is on WiFi (or reachable via the `bb8-robot-recovery` SoftAP fallback) you can re-flash without a cable:
+
+```
+OTA_PASSWORD='your-password' pio run -e motor_test_ota -t upload
+```
+
+## Running the test
+
+Pick one console (the test accepts commands on both simultaneously):
+
+- **USB serial:** `pio device monitor -b 115200`
+- **Browser (no cable needed):** `http://bb8-robot.local:81/webserial`
+
+You should see:
+
+```
+[ota] OtaSafeMode for 'bb8-robot'
+[remote-serial] mounted at /webserial on port 81
+Motor+encoder test ready.
+Layout (pull): 0=back, 1=front-right, 2=front-left
+Commands: <motor 0-2> <speed -1.0..1.0> | stop | rpm
+```
+
+> Note: motors are explicitly driven to zero PWM in `setup()` (right after `motor.begin()`), so they are guaranteed off until the first command arrives.
 
 ## Commands
 
@@ -62,7 +88,7 @@ Encoder VCC → 3.3V, GND → GND.
 | `stop` | Brake all motors |
 | `rpm` | Toggle continuous RPM display (every 20ms) |
 
-## Test 1: Motor 0
+## Test 1: Motor 0 (back)
 
 | Step | Send | Expected |
 |------|------|----------|
@@ -76,7 +102,7 @@ Encoder VCC → 3.3V, GND → GND.
 **Result:** PASS / FAIL
 **Notes:**
 
-## Test 2: Motor 1
+## Test 2: Motor 1 (front-right)
 
 | Step | Send | Expected |
 |------|------|----------|
@@ -90,7 +116,7 @@ Encoder VCC → 3.3V, GND → GND.
 **Result:** PASS / FAIL
 **Notes:**
 
-## Test 3: Motor 2
+## Test 3: Motor 2 (front-left)
 
 | Step | Send | Expected |
 |------|------|----------|
@@ -104,7 +130,7 @@ Encoder VCC → 3.3V, GND → GND.
 **Result:** PASS / FAIL
 **Notes:**: inverted direction
 
-## Test 4: Encoder 0
+## Test 4: Encoder 0 (back)
 
 | Step | Send | Expected |
 |------|------|----------|
@@ -117,7 +143,7 @@ Encoder VCC → 3.3V, GND → GND.
 **Result:** PASS / FAIL
 **Notes:** 0 +-0.5 -> +.10rpm
 
-## Test 5: Encoder 1
+## Test 5: Encoder 1 (front-right)
 
 | Step | Send | Expected |
 |------|------|----------|
@@ -129,7 +155,7 @@ Encoder VCC → 3.3V, GND → GND.
 **Result:** PASS / FAIL
 **Notes:**
 
-## Test 6: Encoder 2
+## Test 6: Encoder 2 (front-left)
 
 | Step | Send | Expected |
 |------|------|----------|
