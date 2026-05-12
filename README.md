@@ -5,8 +5,8 @@
 
 - motors connection
   <img width="623" height="533" alt="motor_connection" src="https://github.com/user-attachments/assets/e7bde139-5d59-490f-bc16-b157778b8312" />
-- [LiPo Guide](https://github.com/user-attachments/files/27626973/LiPo_Charging_Guide.1.pdf)
-
+- [Safety procedure : LiPo charging](https://github.com/user-attachments/files/27626973/LiPo_Charging_Guide.1.pdf)
+- [Safety procedure : turning everything on]()
 ## TODO:
 - Scale photo
 - Head circuit
