@@ -18,6 +18,17 @@ static DrivetrainConfig defaultConfig() {
     };
 }
 
+static DrivetrainConfig pullConfig() {
+    constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
+    return {
+        .wheelRadius = 0.05f,
+        .robotRadius = 0.1f,
+        .tiltAngle = 0.0f,
+        .maxRPM = 100.0f,
+        .wheelAngles = {180.0f * DEG, 300.0f * DEG, 60.0f * DEG},
+    };
+}
+
 static float toRPM(float omega) {
     return omega * 60.0f / (2.0f * static_cast<float>(M_PI));
 }
@@ -183,6 +194,53 @@ void test_combined_3_axis() {
     }
 }
 
+// Pull config: motor 0 at 180° (back), motor 1 at 300° (front-right), motor 2 at 60° (front-left).
+// Under pure forward vx > 0, motor 0 should idle (back), motors 1 & 2 do the work.
+
+void test_pull_pure_forward() {
+    DrivetrainConfig cfg = pullConfig();
+    cfg.maxRPM = 300.0f;
+    OmniKinematics kin(cfg);
+    auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
+
+    // motor 0 at θ=180°: -sin(180°)=0, idle for pure vx
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[0]);
+    // motor 1 at θ=300°: -sin(300°)=+√3/2 → positive RPM
+    // motor 2 at θ= 60°: -sin( 60°)=-√3/2 → negative RPM, equal magnitude
+    float expectedRPM1 = toRPM(20.0f * SQRT3_2);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM1, rpms[1]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -expectedRPM1, rpms[2]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, fabsf(rpms[1]), fabsf(rpms[2]));
+}
+
+void test_pull_pure_strafe_left() {
+    DrivetrainConfig cfg = pullConfig();
+    cfg.maxRPM = 300.0f;
+    OmniKinematics kin(cfg);
+    auto rpms = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
+
+    // motor 0 at θ=180°: -cos(180°)·1 = +1 → +20 rad/s
+    // motors 1 & 2 at θ=300°,60°: -cos = -0.5 → -10 rad/s each
+    float rpm0 = toRPM(20.0f);
+    float rpm12 = toRPM(-10.0f);
+
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm0, rpms[0]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm12, rpms[1]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm12, rpms[2]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, fabsf(rpms[0]) * 0.5f, fabsf(rpms[1]));
+}
+
+void test_pull_pure_ccw_rotation() {
+    OmniKinematics kin(pullConfig());
+    auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
+
+    // Rotation term -R·ω is azimuth-independent: all three same magnitude and same sign.
+    float expectedRPM = toRPM(-2.0f);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[0]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[1]);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[2]);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_velocity);
@@ -196,5 +254,8 @@ int main() {
     RUN_TEST(test_pure_strafe_right);
     RUN_TEST(test_pure_cw_rotation);
     RUN_TEST(test_combined_3_axis);
+    RUN_TEST(test_pull_pure_forward);
+    RUN_TEST(test_pull_pure_strafe_left);
+    RUN_TEST(test_pull_pure_ccw_rotation);
     return UNITY_END();
 }
