@@ -7,7 +7,8 @@
 <img width="623" height="533" alt="motor_connection" src="https://github.com/user-attachments/assets/e7bde139-5d59-490f-bc16-b157778b8312" />
 
 - [Safety procedure : LiPo charging](https://github.com/user-attachments/files/27626973/LiPo_Charging_Guide.1.pdf)
-- [Safety procedure : turning everything on](https://github.com/user-attachments/files/27647302/BB8_Safety_Procedures.pdf)
+- [Safety procedure : turning everything on](https://github.com/user-attachments/files/27644837/BB8_Safety_Procedures.pdf)
+
 ## TODO:
 - Scale photo
 - Head circuit
