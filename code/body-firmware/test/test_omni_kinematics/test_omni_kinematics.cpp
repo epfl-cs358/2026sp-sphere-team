@@ -8,7 +8,14 @@ static const float TOLERANCE = 0.01f;
 static const float SQRT3_2 = 0.86602540378f;
 
 static DrivetrainConfig defaultConfig() {
-    return {.wheelRadius = 0.05f, .robotRadius = 0.1f, .tiltAngle = 0.0f, .maxRPM = 100.0f};
+    constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
+    return {
+        .wheelRadius = 0.05f,
+        .robotRadius = 0.1f,
+        .tiltAngle = 0.0f,
+        .maxRPM = 100.0f,
+        .wheelAngles = {0.0f, 120.0f * DEG, 240.0f * DEG},
+    };
 }
 
 static float toRPM(float omega) {

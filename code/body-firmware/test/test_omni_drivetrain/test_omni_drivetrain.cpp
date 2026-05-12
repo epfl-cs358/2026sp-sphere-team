@@ -15,7 +15,14 @@ static PID pid1(1.0f, 0.0f, 0.0f, -1.0f, 1.0f);
 static PID pid2(1.0f, 0.0f, 0.0f, -1.0f, 1.0f);
 
 static DrivetrainConfig testConfig() {
-    return {.wheelRadius = 0.05f, .robotRadius = 0.1f, .tiltAngle = 0.0f, .maxRPM = 300.0f};
+    constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
+    return {
+        .wheelRadius = 0.05f,
+        .robotRadius = 0.1f,
+        .tiltAngle = 0.0f,
+        .maxRPM = 300.0f,
+        .wheelAngles = {0.0f, 120.0f * DEG, 240.0f * DEG},
+    };
 }
 
 void setUp() {

@@ -16,11 +16,13 @@ constexpr uint32_t STALENESS_TIMEOUT_MS = 200;  // ramp-to-zero window on silenc
 constexpr uint32_t CONTROL_PERIOD_MS    = 10;   // 100 Hz tick
 
 inline DrivetrainConfig drivetrainConfig() {
+    constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
     return {
         .wheelRadius = WHEEL_RADIUS,
         .robotRadius = ROBOT_RADIUS,
         .tiltAngle   = TILT_ANGLE,
         .maxRPM      = MAX_RPM,
+        .wheelAngles = {0.0f, 120.0f * DEG, 240.0f * DEG},
     };
 }
 
