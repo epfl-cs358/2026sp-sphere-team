@@ -35,6 +35,7 @@ static bool driving = false;
 
 void setup() {
     Serial.begin(115200);
+    OtaSafeMode::begin();
     motor0.begin();
     motor1.begin();
     motor2.begin();
@@ -47,6 +48,7 @@ void setup() {
 }
 
 void loop() {
+    OtaSafeMode::tick();
     unsigned long now = millis();
     if (now - lastLoopTime >= LOOP_INTERVAL_MS) {
         drivetrain.update(static_cast<float>(now - lastLoopTime) / 1000.0f);

@@ -34,6 +34,7 @@ static unsigned long lastUpdate = 0;
 
 void setup() {
     Serial.begin(115200);
+    OtaSafeMode::begin();
     for (int i = 0; i < NUM_MOTORS; i++) {
         motors[i].begin();
     }
@@ -42,6 +43,7 @@ void setup() {
 }
 
 void loop() {
+    OtaSafeMode::tick();
     unsigned long now = millis();
     if (now - lastUpdate >= UPDATE_INTERVAL_MS) {
         lastUpdate = now;
