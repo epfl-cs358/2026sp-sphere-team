@@ -10,13 +10,9 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <WiFi.h>
-#include <ArduinoOTA.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_task_wdt.h>
-
-#include "config/wifi_credentials.h"
 
 #include "BodyVelocity.h"
 #include "OmniDrivetrain.h"
@@ -36,23 +32,19 @@ OTA_SAFE_MODE_FOR("bb8-robot");
 
 namespace {
 
-// Loop timing constants live in RobotConstants (shared with the rest of the
-// drivetrain stack); deployment-only constants stay local.
 using RobotConstants::STALENESS_TIMEOUT_MS;
 using RobotConstants::CONTROL_PERIOD_MS;
 
-constexpr uint16_t WS_PORT                 = 80;
-constexpr uint32_t WIFI_TIMEOUT_MS         = 30000;
-constexpr uint32_t WIFI_OFFLINE_REBOOT_MS  = 30000;  // reboot if offline this long
-constexpr uint32_t TWDT_TIMEOUT_S          = 1;      // tighter than Arduino default ~5s
-constexpr uint32_t LOOP_TICK_MS            = 100;    // 10 Hz housekeeping (OTA + wifi)
-constexpr const char* OTA_HOSTNAME         = "bb8-robot";
+constexpr uint16_t WS_PORT                  = 80;
+constexpr uint32_t TWDT_TIMEOUT_S           = 1;     // tighter than Arduino default ~5s
+constexpr uint32_t LOOP_TICK_MS             = 100;   // 10 Hz housekeeping
+constexpr uint32_t CAL_PRINT_PERIOD_MS      = 500;
+constexpr uint32_t CAL_POLL_PERIOD_MS       = 50;
 
 constexpr uint32_t CONTROL_TASK_STACK_BYTES = 8192;
 constexpr UBaseType_t CONTROL_TASK_PRIORITY = 4;
 constexpr BaseType_t  CONTROL_TASK_CORE     = 1;
 
-// I2C pins for BNO055 (matches main_imu.cpp)
 constexpr int I2C_SDA = 21;
 constexpr int I2C_SCL = 22;
 
@@ -76,72 +68,42 @@ BNO055IMU g_imu(0x28, &Wire,
                 IMUField::Quaternion | IMUField::Euler |
                 IMUField::Gyro | IMUField::Calibration);
 
-// Constructed in setup() after WiFi/IMU/Wire are up, so FreeRTOS objects
+// Constructed in setup() after Wire/IMU are up, so FreeRTOS objects
 // (queue inside the latch, server/task inside the producer) are created
 // in a known-good runtime context rather than during C++ static init.
 CommandLatch<BodyVelocity>*      g_latch      = nullptr;
 WebSocketCommandProducer*        g_producer   = nullptr;
 PassthroughDrivetrainController* g_controller = nullptr;
 
-volatile uint32_t g_lastWifiConnectedMs = 0;
+// Block until the BNO055 reports full calibration on all four subsystems.
+// Producer and control task are deliberately left un-started by the caller so
+// no commands flow and no PWM is written while we wait. OtaSafeMode must be
+// initialized first so the robot stays reflashable while gated here.
+void waitForCalibration() {
+    Serial.println("[cal] waiting for BNO055 full calibration before arming.");
+    Serial.println("[cal]   gyro:  hold still");
+    Serial.println("[cal]   accel: 6 distinct orientations, hold each ~2s");
+    Serial.println("[cal]   mag:   slow figure-8 in the air");
 
-void onWifiEvent(WiFiEvent_t event) {
-    switch (event) {
-        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-            g_lastWifiConnectedMs = millis();
-            Serial.print("[wifi] got IP ");
-            Serial.println(WiFi.localIP());
-            break;
-        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-            Serial.println("[wifi] disconnected");
-            break;
-        default:
-            break;
-    }
-}
+    uint32_t last_print = 0;
+    while (!g_imu.isCalibrated()) {
+        OtaSafeMode::tick();
 
-void initOta() {
-    ArduinoOTA.setHostname(OTA_HOSTNAME);
-    ArduinoOTA.setPassword(OTA_PASSWORD);
+        // read() refreshes the calibration field and, once fully calibrated,
+        // persists offsets to flash via the IMU's saved-this-boot latch.
+        IMUReading r = g_imu.read();
 
-    ArduinoOTA.onStart([]() {
-        // Stop accepting new commands. Once the producer is gone, the staleness
-        // ramp in controlTask will drive motors to zero within 200 ms before
-        // the firmware actually overwrites flash.
-        Serial.println("[ota] update starting; halting teleop");
-        if (g_producer) g_producer->stop();
-    });
-    ArduinoOTA.onEnd([]() {
-        Serial.println("[ota] update complete; rebooting");
-    });
-    ArduinoOTA.onError([](ota_error_t err) {
-        Serial.printf("[ota] error %u\n", err);
-    });
-
-    ArduinoOTA.begin();
-    Serial.printf("[ota] ready on %s.local\n", OTA_HOSTNAME);
-}
-
-void connectWifi() {
-    WiFi.mode(WIFI_STA);
-    WiFi.persistent(false);
-    WiFi.setAutoReconnect(true);
-    WiFi.onEvent(onWifiEvent);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    Serial.print("Connecting to WiFi");
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-        if (millis() - start > WIFI_TIMEOUT_MS) {
-            Serial.println("\nFATAL: WiFi connect timeout — restarting.");
-            ESP.restart();
+        const uint32_t now = millis();
+        if (now - last_print >= CAL_PRINT_PERIOD_MS) {
+            Serial.printf("[cal] sys=%u gyro=%u accel=%u mag=%u\n",
+                          r.calibration.sys, r.calibration.gyro,
+                          r.calibration.accel, r.calibration.mag);
+            last_print = now;
         }
-        delay(500);
-        Serial.print('.');
+
+        delay(CAL_POLL_PERIOD_MS);
     }
-    Serial.println();
-    Serial.print("WiFi connected. IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.println("[cal] fully calibrated — arming teleop.");
 }
 
 void controlTask(void* /*arg*/) {
@@ -185,11 +147,18 @@ void controlTask(void* /*arg*/) {
             }
         }
 
-        // 3) Tick controller.
+        // 3) Hard-zero the command while an OTA upload is in progress, so
+        //    motors halt while flash is being overwritten. Replaces the
+        //    previous ArduinoOTA.onStart hook that lived in this TU.
+        if (OtaSafeMode::isUpdating()) {
+            drive_cmd = {0.0f, 0.0f, 0.0f};
+        }
+
+        // 4) Tick controller.
         IMUReading imu_reading = g_imu.read();
         g_controller->update(drive_cmd, imu_reading);
 
-        // 4) Tick motor controllers (RPM PID).
+        // 5) Tick motor controllers (RPM PID).
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
         g_drivetrain.update(dt);
 
@@ -215,6 +184,11 @@ void setup() {
     delay(200);
     Serial.println("BB-8 main_robot starting.");
 
+    // Network/OTA FIRST. If anything below this fails, the chip stays
+    // reachable via STA (bb8-robot.local) or the always-on recovery
+    // SoftAP (bb8-robot-recovery at 192.168.4.1).
+    OtaSafeMode::begin();
+
     Wire.begin(I2C_SDA, I2C_SCL);
 
     g_motor0.begin();
@@ -226,15 +200,15 @@ void setup() {
         ESP.restart();
     }
 
-    connectWifi();
-
     g_latch      = new CommandLatch<BodyVelocity>();
     g_producer   = new WebSocketCommandProducer(*g_latch, WS_PORT);
     g_controller = new PassthroughDrivetrainController(g_drivetrain, g_imu);
 
-    g_producer->start();
+    // Gate: no producer, no control task, no PWM until the IMU is fully
+    // calibrated. Motors stay at PWM=0 from begin() throughout this wait.
+    waitForCalibration();
 
-    initOta();
+    g_producer->start();
 
     // Tighten the global Task Watchdog timeout. Affects IDLE tasks too, but
     // 1s is comfortably above their normal slack.
@@ -253,15 +227,6 @@ void setup() {
 }
 
 void loop() {
-    // Housekeeping: OTA poll + WiFi reboot watchdog. Control runs in dedicated
-    // tasks. Tick at 10 Hz so OTA initiate requests are answered promptly.
-    ArduinoOTA.handle();
-
-    if (WiFi.status() == WL_CONNECTED) {
-        g_lastWifiConnectedMs = millis();
-    } else if (millis() - g_lastWifiConnectedMs > WIFI_OFFLINE_REBOOT_MS) {
-        Serial.println("FATAL: WiFi offline >30s — restarting.");
-        ESP.restart();
-    }
+    OtaSafeMode::tick();
     vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
 }
