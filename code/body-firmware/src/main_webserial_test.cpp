@@ -2,7 +2,7 @@
 #include "OtaSafeMode.h"
 #include "RemoteSerial.h"
 
-OTA_SAFE_MODE_FOR("bb8-webserial-test");
+OTA_SAFE_MODE_FOR("bb8-robot");
 
 void setup() {
     Serial.begin(115200);

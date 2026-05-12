@@ -12,7 +12,7 @@
 #include "FIT0186Motor.h"
 
 #include "OtaSafeMode.h"
-OTA_SAFE_MODE_FOR("bb8-motor-test");
+OTA_SAFE_MODE_FOR("bb8-robot");
 
 static constexpr int NUM_MOTORS = 3;
 static constexpr unsigned long UPDATE_INTERVAL_MS = 20;

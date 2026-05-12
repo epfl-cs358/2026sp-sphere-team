@@ -7,7 +7,7 @@
 #include "PID.h"
 
 #include "OtaSafeMode.h"
-OTA_SAFE_MODE_FOR("bb8-drivetrain-test");
+OTA_SAFE_MODE_FOR("bb8-robot");
 
 static constexpr unsigned long LOOP_INTERVAL_MS = 10;
 static constexpr unsigned long PRINT_INTERVAL_MS = 200;
