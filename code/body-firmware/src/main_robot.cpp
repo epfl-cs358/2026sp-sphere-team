@@ -31,6 +31,9 @@
 #include "WebSocketCommandProducer.h"
 #include "PassthroughDrivetrainController.h"
 
+#include "OtaSafeMode.h"
+OTA_SAFE_MODE_FOR("bb8-robot");
+
 namespace {
 
 // Loop timing constants live in RobotConstants (shared with the rest of the
