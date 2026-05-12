@@ -7,7 +7,7 @@
 static const float TOLERANCE = 0.01f;
 static const float SQRT3_2 = 0.86602540378f;
 
-static DrivetrainConfig defaultConfig() {
+static DrivetrainConfig pushConfig() {
     constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
     return {
         .wheelRadius = 0.05f,
@@ -37,7 +37,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_zero_velocity() {
-    OmniKinematics kin(defaultConfig());
+    OmniKinematics kin(pushConfig());
     auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 0.0f});
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[1]);
@@ -45,7 +45,7 @@ void test_zero_velocity() {
 }
 
 void test_pure_forward() {
-    DrivetrainConfig cfg = defaultConfig();
+    DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
     auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
@@ -60,7 +60,7 @@ void test_pure_forward() {
 }
 
 void test_pure_strafe_left() {
-    DrivetrainConfig cfg = defaultConfig();
+    DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
     // vy=+1 = strafe left
@@ -76,7 +76,7 @@ void test_pure_strafe_left() {
 }
 
 void test_pure_ccw_rotation() {
-    OmniKinematics kin(defaultConfig());
+    OmniKinematics kin(pushConfig());
     // omega=+1 = CCW from above
     auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
 
@@ -88,7 +88,7 @@ void test_pure_ccw_rotation() {
 }
 
 void test_saturation_scaling() {
-    OmniKinematics kin(defaultConfig());
+    OmniKinematics kin(pushConfig());
 
     auto rpms = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
 
@@ -106,8 +106,8 @@ void test_saturation_scaling() {
 }
 
 void test_tilt_angle_effect() {
-    DrivetrainConfig flat = defaultConfig();
-    DrivetrainConfig tilted = defaultConfig();
+    DrivetrainConfig flat = pushConfig();
+    DrivetrainConfig tilted = pushConfig();
     tilted.tiltAngle = 30.0f * static_cast<float>(M_PI) / 180.0f;
 
     OmniKinematics kinFlat(flat);
@@ -128,7 +128,7 @@ void test_tilt_angle_effect() {
 }
 
 void test_combined_velocity() {
-    OmniKinematics kin(defaultConfig());
+    OmniKinematics kin(pushConfig());
 
     BodyVelocity forward = {0.1f, 0.0f, 0.0f};
     BodyVelocity rotation = {0.0f, 0.0f, 1.0f};
@@ -144,7 +144,7 @@ void test_combined_velocity() {
 }
 
 void test_pure_backward() {
-    DrivetrainConfig cfg = defaultConfig();
+    DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
 
@@ -157,7 +157,7 @@ void test_pure_backward() {
 }
 
 void test_pure_strafe_right() {
-    DrivetrainConfig cfg = defaultConfig();
+    DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
 
@@ -170,7 +170,7 @@ void test_pure_strafe_right() {
 }
 
 void test_pure_cw_rotation() {
-    OmniKinematics kin(defaultConfig());
+    OmniKinematics kin(pushConfig());
     auto ccw = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
     auto cw = kin.toWheelRPMs({0.0f, 0.0f, -1.0f});
 
@@ -180,7 +180,7 @@ void test_pure_cw_rotation() {
 }
 
 void test_combined_3_axis() {
-    DrivetrainConfig cfg = defaultConfig();
+    DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 1000.0f;
     OmniKinematics kin(cfg);
 

@@ -22,7 +22,9 @@ inline DrivetrainConfig drivetrainConfig() {
         .robotRadius = ROBOT_RADIUS,
         .tiltAngle   = TILT_ANGLE,
         .maxRPM      = MAX_RPM,
-        .wheelAngles = {0.0f, 120.0f * DEG, 240.0f * DEG},
+        // Pull config: motor 0 at back (180°), motors 1 & 2 at front-right (300°)
+        // and front-left (60°). Drive wheels load up under forward acceleration.
+        .wheelAngles = {180.0f * DEG, 300.0f * DEG, 60.0f * DEG},
     };
 }
 
