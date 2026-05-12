@@ -23,7 +23,8 @@ void printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 // Register a callback invoked when a message arrives from the browser.
 // The argument is the raw line as sent (no trim). Replaces any previous
-// callback.
+// callback. Call from setup() before begin(); reassigning concurrently
+// with inbound browser traffic on the AsyncTCP task is not safe.
 void onMessage(std::function<void(const String&)> cb);
 
 }  // namespace RemoteSerial
