@@ -3,7 +3,7 @@
  * Alessandro Lombardini, with assistance from Claude (Anthropic)
  *
  * End-to-end teleop: WebSocket producer (Core 0) → CommandLatch →
- * 100Hz control task (Core 1) → PassthroughDrivetrainController → OmniDrivetrain.
+ * 100Hz control task (Core 1) → BalancingDrivetrainController → OmniDrivetrain.
  * Dead-window policy: instant stop on producer disconnect, linear ramp during
  * 200ms staleness window, hard stop after.
  */
@@ -25,7 +25,9 @@
 
 #include "sync/CommandLatch.h"
 #include "WebSocketCommandProducer.h"
-#include "PassthroughDrivetrainController.h"
+#include "BalancingDrivetrainController.h"
+#include "BalanceTuner.h"
+#include "BalanceConfigStorage.h"
 #include "ArmingState.h"
 
 #include "BringUp.h"
@@ -75,7 +77,8 @@ BNO055IMU g_imu(0x28, &Wire,
 // in a known-good runtime context rather than during C++ static init.
 CommandLatch<BodyVelocity>*      g_latch      = nullptr;
 WebSocketCommandProducer*        g_producer   = nullptr;
-PassthroughDrivetrainController* g_controller = nullptr;
+BalancingDrivetrainController*   g_controller = nullptr;
+BalanceTuner                     g_tuner;
 
 const char* armingStateName(ArmingState::State s) {
     switch (s) {
@@ -107,7 +110,10 @@ void handleRemoteSerialLine(const String& line) {
     } else if (verb == "armstate") {
         RemoteSerial::printf("[arming] %s\n", armingStateName(ArmingState::get()));
     } else {
-        RemoteSerial::printf("[cmd] unknown verb: %s\n", verb.c_str());
+        // Fall through to the balance tuner: it consumes lines that begin with
+        // `balance ` and silently ignores anything else, so truly-unknown verbs
+        // become no-ops here.
+        g_tuner.handle(line);
     }
 }
 
@@ -250,7 +256,14 @@ void setup() {
 
     g_latch      = new CommandLatch<BodyVelocity>();
     g_producer   = new WebSocketCommandProducer(*g_latch, WS_PORT);
-    g_controller = new PassthroughDrivetrainController(g_drivetrain, g_imu);
+
+    BalanceConfig boot_cfg;
+    if (!BalanceConfigStorage::load(boot_cfg)) {
+        boot_cfg = RobotConstants::balanceConfig();
+        RemoteSerial::println("[balance] no persisted config; using defaults");
+    }
+    g_tuner.begin(boot_cfg);
+    g_controller = new BalancingDrivetrainController(g_drivetrain, g_imu, g_tuner.slot());
 
     // Gate: no producer, no control task, no PWM until the IMU is fully
     // calibrated. Motors stay at PWM=0 from begin() throughout this wait.
