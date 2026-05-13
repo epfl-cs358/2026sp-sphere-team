@@ -26,6 +26,7 @@
 #include "sync/CommandLatch.h"
 #include "WebSocketCommandProducer.h"
 #include "PassthroughDrivetrainController.h"
+#include "ArmingState.h"
 
 #include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
@@ -33,6 +34,7 @@ OTA_SAFE_MODE_FOR("bb8-robot");
 namespace {
 
 using RobotConstants::STALENESS_TIMEOUT_MS;
+using RobotConstants::STALE_DISARM_MS;
 using RobotConstants::CONTROL_PERIOD_MS;
 
 constexpr uint16_t WS_PORT                  = 80;
@@ -74,6 +76,40 @@ BNO055IMU g_imu(0x28, &Wire,
 CommandLatch<BodyVelocity>*      g_latch      = nullptr;
 WebSocketCommandProducer*        g_producer   = nullptr;
 PassthroughDrivetrainController* g_controller = nullptr;
+
+const char* armingStateName(ArmingState::State s) {
+    switch (s) {
+        case ArmingState::State::Disarmed: return "Disarmed";
+        case ArmingState::State::Armed:    return "Armed";
+        case ArmingState::State::Killed:   return "Killed";
+    }
+    return "?";
+}
+
+// RemoteSerial verb dispatcher: arm / disarm / kill / clearkill / armstate.
+// Whitespace-trimmed; unknown verbs echo back to the browser. Mirrors the
+// WebSocket producer's control-frame routing for bench operation without UI.
+void handleRemoteSerialLine(const String& line) {
+    String verb = line;
+    verb.trim();
+    if (verb == "arm") {
+        ArmingState::arm();
+        RemoteSerial::println("[arming] Armed");
+    } else if (verb == "disarm") {
+        ArmingState::disarm();
+        RemoteSerial::println("[arming] Disarmed");
+    } else if (verb == "kill") {
+        ArmingState::kill();
+        RemoteSerial::println("[arming] Killed");
+    } else if (verb == "clearkill") {
+        ArmingState::clearKill();
+        RemoteSerial::printf("[arming] %s\n", armingStateName(ArmingState::get()));
+    } else if (verb == "armstate") {
+        RemoteSerial::printf("[arming] %s\n", armingStateName(ArmingState::get()));
+    } else {
+        RemoteSerial::printf("[cmd] unknown verb: %s\n", verb.c_str());
+    }
+}
 
 // Block until the BNO055 reports full calibration on all four subsystems.
 // Producer and control task are deliberately left un-started by the caller so
@@ -147,19 +183,27 @@ void controlTask(void* /*arg*/) {
             }
         }
 
-        // 3) Hard-zero the command while an OTA upload is in progress, so
-        //    motors halt while flash is being overwritten. Replaces the
-        //    previous ArduinoOTA.onStart hook that lived in this TU.
-        if (OtaSafeMode::isUpdating()) {
-            drive_cmd = {0.0f, 0.0f, 0.0f};
-        }
-
-        // 4) Tick controller.
-        IMUReading imu_reading = g_imu.read();
-        g_controller->update(drive_cmd, imu_reading);
-
-        // 5) Tick motor controllers (RPM PID).
+        // 3) Arming gate. Killed brakes immediately; Armed runs the controller
+        //    (with long-term producer-silence auto-disarm); Disarmed hard-zeros
+        //    and lets the per-wheel PIDs hold motors at zero. OTA composes by
+        //    driving ArmingState::disarm() from OtaSafeMode::onStart().
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
+        const auto arming = ArmingState::get();
+        if (arming == ArmingState::State::Killed) {
+            g_controller->stop();
+            drive_cmd = {0.0f, 0.0f, 0.0f};
+        } else if (arming == ArmingState::State::Armed) {
+            if (have_seen_fresh && (now - last_fresh_ms) > STALE_DISARM_MS) {
+                ArmingState::disarm();
+                drive_cmd = {0.0f, 0.0f, 0.0f};
+            } else {
+                IMUReading imu_reading = g_imu.read();
+                g_controller->update(drive_cmd, imu_reading);
+            }
+        } else {
+            drive_cmd = {0.0f, 0.0f, 0.0f};
+            g_drivetrain.drive(drive_cmd);
+        }
         g_drivetrain.update(dt);
 
         esp_task_wdt_reset();
@@ -184,7 +228,10 @@ void setup() {
     // reachable via STA (bb8-robot.local) or the always-on recovery
     // SoftAP (bb8-robot-recovery at 192.168.4.1).
     BringUp::begin();
+    ArmingState::begin();
+    RemoteSerial::onMessage(handleRemoteSerialLine);
     RemoteSerial::println("BB-8 main_robot starting.");
+    RemoteSerial::println("[arming] boot state: Disarmed");
 
     Wire.begin(I2C_SDA, I2C_SCL);
 

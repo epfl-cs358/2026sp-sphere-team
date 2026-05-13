@@ -12,8 +12,9 @@ constexpr float TILT_ANGLE    = 30.0f * static_cast<float>(M_PI) / 180.0f;
 constexpr float MAX_RPM       = 251.0f;
 
 // Teleop control-loop timing.
-constexpr uint32_t STALENESS_TIMEOUT_MS = 200;  // ramp-to-zero window on silence
-constexpr uint32_t CONTROL_PERIOD_MS    = 10;   // 100 Hz tick
+constexpr uint32_t STALENESS_TIMEOUT_MS = 200;   // ramp-to-zero window on silence
+constexpr uint32_t STALE_DISARM_MS      = 2000;  // long-term auto-disarm backstop
+constexpr uint32_t CONTROL_PERIOD_MS    = 10;    // 100 Hz tick
 
 inline DrivetrainConfig drivetrainConfig() {
     constexpr float DEG = static_cast<float>(M_PI) / 180.0f;
