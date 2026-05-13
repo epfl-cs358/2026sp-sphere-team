@@ -27,7 +27,7 @@ public:
 
         std::array<float, 3> rpms;
         for (int i = 0; i < 3; i++) {
-            const float w = scale * (-_sin[i] * v.vx - _cos[i] * v.vy - R * v.omega);
+            const float w = scale * (-_sin[i] * v.vx + _cos[i] * v.vy + R * v.omega);
             rpms[i] = w * RAD_TO_RPM;
         }
 

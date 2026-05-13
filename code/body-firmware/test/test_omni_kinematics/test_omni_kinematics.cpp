@@ -63,11 +63,11 @@ void test_pure_strafe_left() {
     DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
-    // vy=+1 = strafe left
+    // vy=+1 = strafe left. Push config: wheel 0 at 0° → +cos·vy=+1.
     auto rpms = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
 
-    float rpm0 = toRPM(-20.0f);
-    float rpm12 = toRPM(10.0f);
+    float rpm0 = toRPM(20.0f);
+    float rpm12 = toRPM(-10.0f);
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm0, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm12, rpms[1]);
@@ -77,10 +77,10 @@ void test_pure_strafe_left() {
 
 void test_pure_ccw_rotation() {
     OmniKinematics kin(pushConfig());
-    // omega=+1 = CCW from above
+    // omega=+1 = CCW from above. All wheels share the +R·ω term.
     auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
 
-    float expectedRPM = toRPM(-2.0f);
+    float expectedRPM = toRPM(2.0f);
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[1]);
@@ -219,10 +219,10 @@ void test_pull_pure_strafe_left() {
     OmniKinematics kin(cfg);
     auto rpms = kin.toWheelRPMs({0.0f, 1.0f, 0.0f});
 
-    // motor 0 at θ=180°: -cos(180°)·1 = +1 → +20 rad/s
-    // motors 1 & 2 at θ=300°,60°: -cos = -0.5 → -10 rad/s each
-    float rpm0 = toRPM(20.0f);
-    float rpm12 = toRPM(-10.0f);
+    // motor 0 at θ=180°: +cos(180°)·1 = -1 → -20 rad/s
+    // motors 1 & 2 at θ=300°,60°: +cos = +0.5 → +10 rad/s each
+    float rpm0 = toRPM(-20.0f);
+    float rpm12 = toRPM(10.0f);
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm0, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, rpm12, rpms[1]);
@@ -234,8 +234,8 @@ void test_pull_pure_ccw_rotation() {
     OmniKinematics kin(pullConfig());
     auto rpms = kin.toWheelRPMs({0.0f, 0.0f, 1.0f});
 
-    // Rotation term -R·ω is azimuth-independent: all three same magnitude and same sign.
-    float expectedRPM = toRPM(-2.0f);
+    // Rotation term +R·ω is azimuth-independent: all three same magnitude and same sign.
+    float expectedRPM = toRPM(2.0f);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[0]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[1]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM, rpms[2]);
