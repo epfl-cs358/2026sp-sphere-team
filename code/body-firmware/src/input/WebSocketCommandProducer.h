@@ -25,10 +25,16 @@
 
 #pragma once
 
+#include "ArmingState.h"
+#include "CommandFrameParser.h"
 #include "CommandProducer.h"
 #include "Lifecycle.h"
 #include "sync/CommandLatch.h"
 #include "BodyVelocity.h"
+
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -46,6 +52,31 @@ public:
     void start() override;
     void stop() override;
     bool connected() const override;
+
+    // Route a parsed frame: velocity frames write the latch, control frames
+    // invoke the matching ArmingState transition. Defined inline so the
+    // dispatch logic can be unit-tested without linking the transport layer.
+    static inline void dispatchFrame(CommandLatch<BodyVelocity>& latch,
+                                     std::atomic<uint32_t>& frameCount,
+                                     const FrameParseResult& r) {
+        if (r.kind == FrameKind::Velocity) {
+            latch.write(r.velocity);
+            frameCount.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        const char* verbName = "?";
+        switch (r.control) {
+            case ControlVerb::Arm:       ArmingState::arm();       verbName = "arm";       break;
+            case ControlVerb::Disarm:    ArmingState::disarm();    verbName = "disarm";    break;
+            case ControlVerb::Kill:      ArmingState::kill();      verbName = "kill";      break;
+            case ControlVerb::ClearKill: ArmingState::clearKill(); verbName = "clearkill"; break;
+        }
+#ifdef ARDUINO
+        Serial.printf("[ws] control: %s\n", verbName);
+#else
+        (void)verbName;
+#endif
+    }
 
 private:
     static void taskTrampoline(void* arg);

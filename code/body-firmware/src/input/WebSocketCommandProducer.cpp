@@ -12,6 +12,7 @@
 #include <freertos/semphr.h>
 #include <esp_task_wdt.h>
 
+#include "ArmingState.h"
 #include "CommandFrameParser.h"
 
 namespace {
@@ -152,23 +153,29 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
             if (!result.ok()) {
                 _parseFailCount.fetch_add(1, std::memory_order_relaxed);
                 switch (result.error) {
-                    case FrameParseError::EmptyOrTooLong: logParseFail("len");   break;
-                    case FrameParseError::InvalidVx:      logParseFail("vx");    break;
-                    case FrameParseError::InvalidVy:      logParseFail("vy");    break;
-                    case FrameParseError::InvalidOmega:   logParseFail("omega"); break;
+                    case FrameParseError::EmptyOrTooLong:     logParseFail("len");     break;
+                    case FrameParseError::InvalidVx:          logParseFail("vx");      break;
+                    case FrameParseError::InvalidVy:          logParseFail("vy");      break;
+                    case FrameParseError::InvalidOmega:       logParseFail("omega");   break;
+                    case FrameParseError::InvalidControlVerb: logParseFail("control"); break;
                     default: break;
                 }
                 return;
             }
 
-            _latch.write(result.velocity);
+            const uint32_t beforeVelocityCount =
+                _frameCount.load(std::memory_order_relaxed);
+            dispatchFrame(_latch, _frameCount, result);
 
-            // Periodic counter dump every 1000 frames (~10s @ 100 Hz).
-            uint32_t count = _frameCount.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (count % 1000 == 0) {
-                Serial.printf("[ws] frames=%u parse_fail=%u\n",
-                              count,
-                              _parseFailCount.load(std::memory_order_relaxed));
+            // Periodic counter dump every 1000 *velocity* frames (~10s @ 100 Hz).
+            // Control frames bypass the counter (rare, not stick throughput).
+            if (result.kind == FrameKind::Velocity) {
+                const uint32_t count = beforeVelocityCount + 1;
+                if (count % 1000 == 0) {
+                    Serial.printf("[ws] frames=%u parse_fail=%u\n",
+                                  count,
+                                  _parseFailCount.load(std::memory_order_relaxed));
+                }
             }
             break;
         }
