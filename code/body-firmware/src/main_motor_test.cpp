@@ -17,8 +17,7 @@
 #include "L298NDriver.h"
 #include "FIT0186Motor.h"
 
-#include "OtaSafeMode.h"
-#include "RemoteSerial.h"
+#include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
 
 static constexpr int NUM_MOTORS = 3;
@@ -83,9 +82,7 @@ static void handleCommand(const String& raw) {
 }
 
 void setup() {
-    Serial.begin(115200);
-    OtaSafeMode::begin();
-    RemoteSerial::begin();
+    BringUp::begin();
 
     // Bring each driver up AND force its PWM channels to zero before anything
     // else runs. begin() only configures pinMode; setSpeed(0.0f) guarantees
@@ -104,8 +101,7 @@ void setup() {
 }
 
 void loop() {
-    OtaSafeMode::tick();
-    RemoteSerial::tick();
+    BringUp::tick();
 
     unsigned long now = millis();
     if (now - lastUpdate >= UPDATE_INTERVAL_MS) {

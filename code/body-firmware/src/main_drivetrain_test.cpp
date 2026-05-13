@@ -6,8 +6,7 @@
 #include "RobotConstants.h"
 #include "PID.h"
 
-#include "OtaSafeMode.h"
-#include "RemoteSerial.h"
+#include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
 
 static constexpr unsigned long LOOP_INTERVAL_MS = 10;
@@ -72,9 +71,7 @@ static void handleCommand(const String& raw) {
 }
 
 void setup() {
-    Serial.begin(115200);
-    OtaSafeMode::begin();
-    RemoteSerial::begin();
+    BringUp::begin();
 
     // Bring each motor up AND force its PWM channels to zero before the loop
     // runs. begin() only configures pinMode; setSpeed(0.0f) guarantees both
@@ -95,8 +92,7 @@ void setup() {
 }
 
 void loop() {
-    OtaSafeMode::tick();
-    RemoteSerial::tick();
+    BringUp::tick();
 
     // Hard-zero PWM while flash is being overwritten so the wheels can't keep
     // chewing on a stale target through the upload window.

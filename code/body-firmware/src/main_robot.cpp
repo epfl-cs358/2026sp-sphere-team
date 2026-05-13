@@ -27,8 +27,7 @@
 #include "WebSocketCommandProducer.h"
 #include "PassthroughDrivetrainController.h"
 
-#include "OtaSafeMode.h"
-#include "RemoteSerial.h"
+#include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
 
 namespace {
@@ -88,8 +87,7 @@ void waitForCalibration() {
 
     uint32_t last_print = 0;
     while (!g_imu.isCalibrated()) {
-        OtaSafeMode::tick();
-        RemoteSerial::tick();
+        BringUp::tick();
 
         // read() refreshes the calibration field and, once fully calibrated,
         // persists offsets to flash via the IMU's saved-this-boot latch.
@@ -182,15 +180,11 @@ void controlTask(void* /*arg*/) {
 }  // namespace
 
 void setup() {
-    Serial.begin(115200);
-    delay(200);
-    Serial.println("BB-8 main_robot starting.");
-
     // Network/OTA FIRST. If anything below this fails, the chip stays
     // reachable via STA (bb8-robot.local) or the always-on recovery
     // SoftAP (bb8-robot-recovery at 192.168.4.1).
-    OtaSafeMode::begin();
-    RemoteSerial::begin();
+    BringUp::begin();
+    RemoteSerial::println("BB-8 main_robot starting.");
 
     Wire.begin(I2C_SDA, I2C_SCL);
 
@@ -238,7 +232,6 @@ void setup() {
 }
 
 void loop() {
-    OtaSafeMode::tick();
-    RemoteSerial::tick();
+    BringUp::tick();
     vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
 }

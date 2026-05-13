@@ -1,14 +1,10 @@
 #include <Arduino.h>
-#include "OtaSafeMode.h"
-#include "RemoteSerial.h"
+#include "BringUp.h"
 
 OTA_SAFE_MODE_FOR("bb8-robot");
 
 void setup() {
-    Serial.begin(115200);
-    delay(200);
-    OtaSafeMode::begin();
-    RemoteSerial::begin();
+    BringUp::begin();
 
     RemoteSerial::onMessage([](const String& raw) {
         String msg = raw;
@@ -24,7 +20,6 @@ void setup() {
 }
 
 void loop() {
-    OtaSafeMode::tick();
-    RemoteSerial::tick();
+    BringUp::tick();
     vTaskDelay(pdMS_TO_TICKS(100));
 }
