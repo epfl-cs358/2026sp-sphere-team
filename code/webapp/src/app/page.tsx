@@ -22,10 +22,15 @@ export default function Home() {
             </span>
           </Link>
 
-          <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 p-6 opacity-50 cursor-not-allowed">
+          <Link
+            href="/control"
+            className="flex flex-col gap-2 rounded-lg border border-zinc-800 p-6 hover:border-zinc-600 transition-colors"
+          >
             <span className="text-sm font-medium">RC Control</span>
-            <span className="text-xs text-zinc-500">Coming soon</span>
-          </div>
+            <span className="text-xs text-zinc-500">
+              Keyboard teleop over WebSocket
+            </span>
+          </Link>
 
           <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 p-6 opacity-50 cursor-not-allowed">
             <span className="text-sm font-medium">Autonomous</span>
