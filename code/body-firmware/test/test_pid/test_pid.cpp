@@ -250,6 +250,20 @@ void test_4arg_respects_deadband() {
     TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f + 0.1f, follow);
 }
 
+void test_set_gains_changes_output() {
+    PID pid(1.0f, 0.0f, 0.0f, -10.0f, 10.0f);
+    float dt = 0.01f;
+
+    // Baseline: kp=1, error=1 -> output ~1
+    float before = pid.compute(1.0f, 0.0f, dt);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f, before);
+
+    // Bump kp to 3 and re-issue the same setpoint/measurement.
+    pid.setGains(3.0f, 0.0f, 0.0f);
+    float after = pid.compute(1.0f, 0.0f, dt);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 3.0f, after);
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -286,6 +300,8 @@ int main() {
     RUN_TEST(test_4arg_with_external_rate_uses_supplied_rate);
     RUN_TEST(test_4arg_respects_anti_windup);
     RUN_TEST(test_4arg_respects_deadband);
+
+    RUN_TEST(test_set_gains_changes_output);
 
     return UNITY_END();
 }

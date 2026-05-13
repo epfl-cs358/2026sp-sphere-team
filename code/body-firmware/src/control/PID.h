@@ -63,6 +63,14 @@ public:
         _firstCompute = true;
     }
 
+    // Hot-swap gains without re-constructing the PID. Used by the balancing
+    // controller to apply live-tuned BalanceConfig gains every control tick.
+    void setGains(float kp, float ki, float kd) {
+        _kp = kp;
+        _ki = ki;
+        _kd = kd;
+    }
+
 private:
     float _kp;
     float _ki;
