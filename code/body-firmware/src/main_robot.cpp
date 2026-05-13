@@ -196,6 +196,7 @@ void controlTask(void* /*arg*/) {
             if (have_seen_fresh && (now - last_fresh_ms) > STALE_DISARM_MS) {
                 ArmingState::disarm();
                 drive_cmd = {0.0f, 0.0f, 0.0f};
+                g_drivetrain.drive(drive_cmd);
             } else {
                 IMUReading imu_reading = g_imu.read();
                 g_controller->update(drive_cmd, imu_reading);

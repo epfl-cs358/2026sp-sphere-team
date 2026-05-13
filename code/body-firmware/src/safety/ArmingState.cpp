@@ -7,9 +7,12 @@
 #include "RemoteSerial.h"
 #endif
 
-/// Single-writer invariant: all transitions are called from Core 0
-/// (RemoteSerial/WebSocket dispatchers, OtaSafeMode::onStart). Readers on
-/// the control task only use lock-free acquire loads — no compare_exchange.
+/// Writers (arm/disarm/kill/clearKill) may run from multiple tasks: the
+/// WebSocket dispatcher on Core 0, the RemoteSerial line handler on its own
+/// task, and OtaSafeMode::onStart from the Arduino loop() task on Core 1.
+/// State is std::atomic with release/acquire ordering; contention is rare
+/// enough that a plain store suffices over compare_exchange. Control-task
+/// readers use lock-free acquire loads.
 
 namespace ArmingState {
 
