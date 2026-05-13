@@ -11,9 +11,9 @@
 
 inline constexpr L298NPins MOTOR0_PINS = {.fwd = 14, .rev = 27};
 inline constexpr L298NPins MOTOR1_PINS = {.fwd = 16, .rev = 17};
-inline constexpr L298NPins MOTOR2_PINS = {.fwd = 25, .rev = 26};
+inline constexpr L298NPins MOTOR2_PINS = {.fwd = 13, .rev = 12};
 
-inline constexpr EncoderPins MOTOR0_ENCODER_PINS = {.a = 34, .b = 35};
+inline constexpr EncoderPins MOTOR0_ENCODER_PINS = {.a = 35, .b = 34};
 inline constexpr EncoderPins MOTOR1_ENCODER_PINS = {.a = 2, .b = 4};
 inline constexpr EncoderPins MOTOR2_ENCODER_PINS = {.a = 36, .b = 39};
 
