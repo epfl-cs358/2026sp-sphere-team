@@ -17,7 +17,7 @@ public:
     virtual ~DrivetrainController() = default;
 
     // Process one control cycle: read IMU, interpret command, drive.
-    virtual void update(const TCommand& command, const TIMUData& imuData) = 0;
+    virtual void update(const TCommand& command, const TIMUData& imuData, float dt) = 0;
 
     // Emergency stop.
     virtual void stop() = 0;

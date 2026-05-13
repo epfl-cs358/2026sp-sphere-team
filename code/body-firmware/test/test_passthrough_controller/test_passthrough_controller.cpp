@@ -57,11 +57,34 @@ void tearDown() {
 void test_update_forwards_command_to_drivetrain() {
     BodyVelocity cmd{1.5f, -0.5f, 2.0f};
     IMUReading imuData{};
-    controller->update(cmd, imuData);
+    controller->update(cmd, imuData, 0.01f);
     TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
     TEST_ASSERT_EQUAL_FLOAT(1.5f, drivetrain->lastDrive.vx);
     TEST_ASSERT_EQUAL_FLOAT(-0.5f, drivetrain->lastDrive.vy);
     TEST_ASSERT_EQUAL_FLOAT(2.0f, drivetrain->lastDrive.omega);
+}
+
+void test_update_ignores_dt_value() {
+    BodyVelocity cmd{0.25f, 0.75f, -1.0f};
+    IMUReading imuData{};
+
+    controller->update(cmd, imuData, 0.01f);
+    TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
+
+    controller->update(cmd, imuData, 1.0f);
+    TEST_ASSERT_EQUAL(2, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
+
+    controller->update(cmd, imuData, 0.0f);
+    TEST_ASSERT_EQUAL(3, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
 }
 
 void test_stop_calls_drivetrain_stop() {
@@ -72,6 +95,7 @@ void test_stop_calls_drivetrain_stop() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_update_forwards_command_to_drivetrain);
+    RUN_TEST(test_update_ignores_dt_value);
     RUN_TEST(test_stop_calls_drivetrain_stop);
     return UNITY_END();
 }

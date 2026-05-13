@@ -199,7 +199,7 @@ void controlTask(void* /*arg*/) {
                 g_drivetrain.drive(drive_cmd);
             } else {
                 IMUReading imu_reading = g_imu.read();
-                g_controller->update(drive_cmd, imu_reading);
+                g_controller->update(drive_cmd, imu_reading, dt);
             }
         } else {
             drive_cmd = {0.0f, 0.0f, 0.0f};

@@ -14,7 +14,7 @@ class PassthroughDrivetrainController
 public:
     using DrivetrainController::DrivetrainController;
 
-    void update(const BodyVelocity& command, const IMUReading& /*imuData*/) override {
+    void update(const BodyVelocity& command, const IMUReading& /*imuData*/, float /*dt*/) override {
         _drivetrain.drive(command);
     }
 
