@@ -39,7 +39,7 @@ constexpr uint32_t STA_CONNECT_TIMEOUT_MS = 30000;
 constexpr uint32_t OFFLINE_REBOOT_MS      = 30000;
 constexpr uint32_t MARK_VALID_DELAY_MS    = 30000;
 
-volatile uint32_t  g_last_sta_connected_ms = 0;
+std::atomic<uint32_t>  g_last_sta_connected_ms{0};
 std::atomic<bool>  g_updating{false};
 uint32_t           g_boot_ms = 0;
 bool               g_marked  = false;
@@ -47,8 +47,12 @@ char               g_ap_ssid[48] = {0};
 
 void onWifiEvent(WiFiEvent_t e) {
     switch (e) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            WiFi.setSleep(false);
+            Serial.println("[wifi] STA associated (PS=NONE)");
+            break;
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-            g_last_sta_connected_ms = millis();
+            g_last_sta_connected_ms.store(millis(), std::memory_order_release);
             Serial.print("[wifi] STA IP ");
             Serial.println(WiFi.localIP());
             break;
@@ -73,7 +77,9 @@ bool tryConnectSta(uint32_t timeout_ms) {
         Serial.print('.');
     }
     Serial.printf("\n[wifi] STA IP %s\n", WiFi.localIP().toString().c_str());
-    g_last_sta_connected_ms = millis();
+    // WIFI_PS_NONE: latency-sensitive teleop; reset by kernel on reassociate, also re-applied in onWifiEvent.
+    WiFi.setSleep(false);
+    g_last_sta_connected_ms.store(millis(), std::memory_order_release);
     return true;
 }
 
@@ -95,7 +101,7 @@ void begin() {
     Serial.printf("[ota] OtaSafeMode for '%s'\n", kMainName);
 
     g_boot_ms = millis();
-    g_last_sta_connected_ms = millis();
+    g_last_sta_connected_ms.store(millis(), std::memory_order_release);
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.persistent(false);
@@ -143,7 +149,7 @@ void tick() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        g_last_sta_connected_ms = now;
+        g_last_sta_connected_ms.store(now, std::memory_order_release);
     }
 
     const bool ap_up = (WiFi.getMode() & WIFI_MODE_AP) != 0;
@@ -151,7 +157,7 @@ void tick() {
             ap_up,
             WiFi.status() == WL_CONNECTED,
             now,
-            g_last_sta_connected_ms,
+            g_last_sta_connected_ms.load(std::memory_order_acquire),
             OFFLINE_REBOOT_MS)) {
         Serial.println("FATAL: no network at all — restarting.");
         ESP.restart();
