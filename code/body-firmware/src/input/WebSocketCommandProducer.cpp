@@ -161,7 +161,7 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
                 return;
             }
 
-            _latch.write(result.value);
+            _latch.write(result.velocity);
 
             // Periodic counter dump every 1000 frames (~10s @ 100 Hz).
             uint32_t count = _frameCount.fetch_add(1, std::memory_order_relaxed) + 1;
