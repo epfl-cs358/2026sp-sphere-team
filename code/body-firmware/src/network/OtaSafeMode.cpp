@@ -1,5 +1,10 @@
 #include "OtaSafeMode.h"
 
+#include "ArmingState.h"
+
+#include <atomic>
+
+#ifdef ARDUINO
 #include "OtaPolicy.h"
 #include "wifi_credentials.h"
 
@@ -7,8 +12,6 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <esp_ota_ops.h>
-
-#include <atomic>
 
 // Single source of truth. OTA_PASSWORD is defined at build time from the
 // OTA_PASSWORD env var (see platformio.ini build_flags), so build-time and
@@ -18,9 +21,22 @@ static_assert(sizeof(OTA_PASSWORD) >= 9,
     "OTA_PASSWORD env var must be set and at least 8 characters "
     "(WPA2 PSK minimum, since it doubles as the recovery SoftAP password). "
     "Run `export OTA_PASSWORD='your-secret'` before building.");
+#endif  // ARDUINO
 
 namespace OtaSafeMode {
 namespace {
+
+std::atomic<bool>  g_updating{false};
+
+static void onOtaStart() {
+    g_updating.store(true, std::memory_order_release);
+    ArmingState::disarm();
+#ifdef ARDUINO
+    Serial.println("[ota] update starting");
+#endif
+}
+
+#ifdef ARDUINO
 
 // Anchor kMainName so a main missing OTA_SAFE_MODE_FOR(...) fails to link
 // regardless of LTO / --gc-sections elimination. Without this, if no caller
@@ -40,7 +56,6 @@ constexpr uint32_t OFFLINE_REBOOT_MS      = 30000;
 constexpr uint32_t MARK_VALID_DELAY_MS    = 30000;
 
 std::atomic<uint32_t>  g_last_sta_connected_ms{0};
-std::atomic<bool>  g_updating{false};
 uint32_t           g_boot_ms = 0;
 bool               g_marked  = false;
 char               g_ap_ssid[48] = {0};
@@ -93,7 +108,11 @@ void startApAlways() {
                   g_ap_ssid, WiFi.softAPIP().toString().c_str());
 }
 
+#endif  // ARDUINO
+
 }  // namespace
+
+#ifdef ARDUINO
 
 void begin() {
     // Force a load of kMainName so the link cannot drop the symbol. Any main
@@ -115,10 +134,7 @@ void begin() {
     // second live API call as defense against LTO eliding the printf above.
     ArduinoOTA.setHostname(kMainName);
     ArduinoOTA.setPassword(OTA_PASSWORD);
-    ArduinoOTA.onStart([]() {
-        g_updating.store(true, std::memory_order_release);
-        Serial.println("[ota] update starting");
-    });
+    ArduinoOTA.onStart(onOtaStart);
     ArduinoOTA.onEnd([]() {
         g_updating.store(false, std::memory_order_release);
         Serial.println("[ota] update complete; rebooting");
@@ -164,8 +180,16 @@ void tick() {
     }
 }
 
+#endif  // ARDUINO
+
 bool isUpdating() {
     return g_updating.load(std::memory_order_acquire);
 }
+
+#ifdef BB8_TEST_HOOKS
+namespace detail {
+void onOtaStartForTest() { onOtaStart(); }
+}  // namespace detail
+#endif
 
 }  // namespace OtaSafeMode
