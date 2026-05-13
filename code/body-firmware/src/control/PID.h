@@ -13,8 +13,15 @@ public:
           _firstCompute(true) {}
 
     float compute(float setpoint, float measurement, float dt) {
+        if (dt < 1e-4f) return _lastOutput;
+        float rate = _firstCompute ? 0.0f : (measurement - _prevMeasurement) / dt;
+        return compute(setpoint, measurement, rate, dt);
+    }
+
+    float compute(float setpoint, float measurement, float rate, float dt) {
         BB8_ASSERT(std::isfinite(setpoint), "PID: setpoint must be finite");
         BB8_ASSERT(std::isfinite(measurement), "PID: measurement must be finite");
+        BB8_ASSERT(std::isfinite(rate), "PID: rate must be finite");
         BB8_ASSERT(dt >= 0.0f, "PID: dt must be non-negative");
 
         if (dt < 1e-4f) return _lastOutput;
@@ -36,10 +43,7 @@ public:
             if (_integral < integralMin) _integral = integralMin;
         }
 
-        float derivative = 0.0f;
-        if (!_firstCompute) {
-            derivative = -(measurement - _prevMeasurement) / dt;
-        }
+        float derivative = _firstCompute ? 0.0f : -rate;
         _firstCompute = false;
 
         float output = _kp * error + _ki * _integral + _kd * derivative;
