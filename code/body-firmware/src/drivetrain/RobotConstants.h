@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include "BalanceConfig.h"
 #include "DrivetrainConfig.h"
 
 namespace RobotConstants {
@@ -26,6 +27,20 @@ inline DrivetrainConfig drivetrainConfig() {
         // Pull config: motor 0 at back (180°), motors 1 & 2 at front-right (300°)
         // and front-left (60°). Drive wheels load up under forward acceleration.
         .wheelAngles = {180.0f * DEG, 300.0f * DEG, 60.0f * DEG},
+    };
+}
+
+inline BalanceConfig balanceConfig() {
+    return {
+        .tiltPerVelocity   = 0.30f,   // 1 m/s → ~17° tilt
+        .maxTiltSetpoint   = 0.35f,   // ~20°; leaves ample headroom below 60° fault envelope
+        .pitchKp = 1.50f, .pitchKi = 0.0f, .pitchKd = 0.15f,
+        .rollKp  = 1.50f, .rollKi  = 0.0f, .rollKd  = 0.15f,
+        .maxOutputVelocity = 1.00f,   // m/s; just below physical max (~1.05)
+        .envelopeEnterSin  = 0.866f,  // sin(60°)
+        .envelopeExitSin   = 0.819f,  // sin(55°)
+        .gyroPitchSign     = 1.0f,
+        .gyroRollSign      = 1.0f,
     };
 }
 
