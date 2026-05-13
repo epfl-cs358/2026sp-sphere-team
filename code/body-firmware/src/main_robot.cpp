@@ -28,6 +28,7 @@
 #include "PassthroughDrivetrainController.h"
 
 #include "OtaSafeMode.h"
+#include "RemoteSerial.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
 
 namespace {
@@ -80,14 +81,15 @@ PassthroughDrivetrainController* g_controller = nullptr;
 // no commands flow and no PWM is written while we wait. OtaSafeMode must be
 // initialized first so the robot stays reflashable while gated here.
 void waitForCalibration() {
-    Serial.println("[cal] waiting for BNO055 full calibration before arming.");
-    Serial.println("[cal]   gyro:  hold still");
-    Serial.println("[cal]   accel: 6 distinct orientations, hold each ~2s");
-    Serial.println("[cal]   mag:   slow figure-8 in the air");
+    RemoteSerial::println("[cal] waiting for BNO055 full calibration before arming.");
+    RemoteSerial::println("[cal]   gyro:  hold still");
+    RemoteSerial::println("[cal]   accel: 6 distinct orientations, hold each ~2s");
+    RemoteSerial::println("[cal]   mag:   slow figure-8 in the air");
 
     uint32_t last_print = 0;
     while (!g_imu.isCalibrated()) {
         OtaSafeMode::tick();
+        RemoteSerial::tick();
 
         // read() refreshes the calibration field and, once fully calibrated,
         // persists offsets to flash via the IMU's saved-this-boot latch.
@@ -95,15 +97,15 @@ void waitForCalibration() {
 
         const uint32_t now = millis();
         if (now - last_print >= CAL_PRINT_PERIOD_MS) {
-            Serial.printf("[cal] sys=%u gyro=%u accel=%u mag=%u\n",
-                          r.calibration.sys, r.calibration.gyro,
-                          r.calibration.accel, r.calibration.mag);
+            RemoteSerial::printf("[cal] sys=%u gyro=%u accel=%u mag=%u\n",
+                                 r.calibration.sys, r.calibration.gyro,
+                                 r.calibration.accel, r.calibration.mag);
             last_print = now;
         }
 
         delay(CAL_POLL_PERIOD_MS);
     }
-    Serial.println("[cal] fully calibrated — arming teleop.");
+    RemoteSerial::println("[cal] fully calibrated — arming teleop.");
 }
 
 void controlTask(void* /*arg*/) {
@@ -188,6 +190,7 @@ void setup() {
     // reachable via STA (bb8-robot.local) or the always-on recovery
     // SoftAP (bb8-robot-recovery at 192.168.4.1).
     OtaSafeMode::begin();
+    RemoteSerial::begin();
 
     Wire.begin(I2C_SDA, I2C_SCL);
 
@@ -199,7 +202,7 @@ void setup() {
         // Degraded mode: skip producer/controller/control-task creation and
         // return. loop() keeps calling OtaSafeMode::tick() so the chip stays
         // reachable for an OTA reflash that fixes the wiring or driver.
-        Serial.println("[imu] init failed — entering OTA-only degraded mode.");
+        RemoteSerial::println("[imu] init failed — entering OTA-only degraded mode.");
         return;
     }
 
@@ -209,7 +212,12 @@ void setup() {
 
     // Gate: no producer, no control task, no PWM until the IMU is fully
     // calibrated. Motors stay at PWM=0 from begin() throughout this wait.
+    // Build with -DSKIP_IMU_CAL to bypass for bench testing.
+#ifndef SKIP_IMU_CAL
     waitForCalibration();
+#else
+    RemoteSerial::println("[cal] SKIP_IMU_CAL set — arming teleop without calibration.");
+#endif
 
     g_producer->start();
 
@@ -226,10 +234,11 @@ void setup() {
         nullptr,
         CONTROL_TASK_CORE);
 
-    Serial.println("BB-8 ready.");
+    RemoteSerial::println("BB-8 ready.");
 }
 
 void loop() {
     OtaSafeMode::tick();
+    RemoteSerial::tick();
     vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
 }
