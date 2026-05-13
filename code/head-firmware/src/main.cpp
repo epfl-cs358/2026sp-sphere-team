@@ -23,8 +23,10 @@ static camera_config_t camConfig() {
     cfg.pin_href  = 47;
     cfg.pin_pclk  = 13;
     cfg.xclk_freq_hz = 20000000;
-    cfg.ledc_timer   = LEDC_TIMER_0;
-    cfg.ledc_channel = LEDC_CHANNEL_0;
+    // Use LEDC_TIMER_1 / LEDC_CHANNEL_2 so the servo (which ESP32Servo assigns
+    // to channels 0-1) does not collide with the camera's XCLK generator.
+    cfg.ledc_timer   = LEDC_TIMER_1;
+    cfg.ledc_channel = LEDC_CHANNEL_2;
     cfg.pixel_format = PIXFORMAT_JPEG;
     cfg.frame_size   = FRAMESIZE_VGA;
     cfg.jpeg_quality = 12;
@@ -49,25 +51,37 @@ static ServoController   servoCtrl(servoAdapter, SERVO_PIN);
 static WebServer         httpServer(80);
 static WebSocketsServer  wsServer(81);
 
-// ── MJPEG stream handler ──────────────────────────────────────────────────────
-static void handleStream() {
-    WiFiClient client = httpServer.client();
+// Active streaming client; written by handleStream(), read by streamTask().
+static WiFiClient streamClient;
+static volatile bool streaming = false;
 
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-    client.println("Access-Control-Allow-Origin: *");
-    client.println();
-
-    while (client.connected()) {
+// ── Stream task: runs on Core 0, sends MJPEG frames without blocking loop() ──
+static void streamTask(void*) {
+    for (;;) {
+        if (!streaming || !streamClient.connected()) {
+            streaming = false;
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
         camera_fb_t* fb = esp_camera_fb_get();
-        if (!fb) continue;
-
-        client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
-                      fb->len);
-        client.write(fb->buf, fb->len);
-        client.println();
+        if (!fb) { vTaskDelay(1); continue; }
+        streamClient.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                            fb->len);
+        streamClient.write(fb->buf, fb->len);
+        streamClient.println();
         esp_camera_fb_return(fb);
     }
+}
+
+// ── MJPEG stream handler: sends headers and hands off to streamTask ───────────
+static void handleStream() {
+    streamClient = httpServer.client();
+    streamClient.println("HTTP/1.1 200 OK");
+    streamClient.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+    streamClient.println("Access-Control-Allow-Origin: *");
+    streamClient.println();
+    streaming = true;
+    // Returns immediately; streamTask drives the frame loop on Core 0.
 }
 
 // ── WebSocket event handler ───────────────────────────────────────────────────
@@ -93,6 +107,8 @@ void setup() {
     }
 
     servoCtrl.begin();
+
+    xTaskCreatePinnedToCore(streamTask, "stream", 4096, nullptr, 1, nullptr, 0);
 
     httpServer.on("/stream", handleStream);
     httpServer.begin();
