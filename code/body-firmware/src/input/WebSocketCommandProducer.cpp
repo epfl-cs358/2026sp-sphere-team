@@ -47,8 +47,10 @@ void WebSocketCommandProducer::start() {
     _server->onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
         this->onWsEvent(num, static_cast<uint8_t>(type), payload, length);
     });
-    // Detect half-open TCP within ~6s: ping every 2s, fail after 1s + 2 retries.
-    _server->enableHeartbeat(2000, 1000, 2);
+    // Detect half-open TCP within ~7.5s: ping every 3s, fail after 2.5s + 2 retries.
+    // pingInterval > pongTimeout is required by arduinoWebSockets (see issue #769).
+    // Tuned for consumer Wi-Fi where a single ~1s RTT spike is normal.
+    _server->enableHeartbeat(3000, 2500, 2);
 
     _exitSemaphore = xSemaphoreCreateBinary();
     _running = true;
@@ -119,15 +121,16 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
     auto wsType = static_cast<WStype_t>(type);
     switch (wsType) {
         case WStype_CONNECTED: {
-            // Single-client policy: accept the first client, reject the rest.
-            // Two operators sending commands would oscillate the latch.
-            uint8_t expected = kNoClient;
-            if (_activeClient.compare_exchange_strong(expected, clientNum)) {
-                _connected = true;
-                Serial.printf("[ws] client %u connected\n", clientNum);
+            // Single-client policy: drop oldest, accept newest. The new client
+            // pre-empts any stale slot holder so reconnects after a network blip
+            // aren't bounced before the heartbeat evicts the dead connection.
+            uint8_t prior = _activeClient.exchange(clientNum);
+            _connected = true;
+            if (prior != kNoClient) {
+                Serial.printf("[ws] client %u took slot from %u\n", clientNum, prior);
+                if (_server) _server->disconnect(prior);
             } else {
-                Serial.printf("[ws] client %u rejected (active=%u)\n", clientNum, expected);
-                if (_server) _server->disconnect(clientNum);
+                Serial.printf("[ws] client %u connected\n", clientNum);
             }
             break;
         }
