@@ -6,12 +6,24 @@ import { useEffect, useRef, useState } from "react";
 import type { Cmd, SocketState } from "./types";
 
 const SEND_RATE_MS = 50;
-// Chip-side WebSocketCommandProducer accepts one client and its heartbeat
-// takes ~5s to evict a dead one (enableHeartbeat(2000, 1000, 2)). Retrying
-// faster than that just gets the new connection rejected, which closes,
-// which schedules another retry — a tight loop that looks like rapid
-// disconnect/reconnect flicker. 4s gives the chip time to clear its slot.
-const RECONNECT_DELAY_MS = 4000;
+const BUFFERED_AMOUNT_LIMIT = 256;
+const STABILITY_MS = 3000;
+
+// Schedule: 0, 250, 500, 1000, 2000, then 4000 capped at 5000.
+// Jitter (±20%) kicks in at attempt 3 so short blips still recover instantly
+// while real outages don't synchronize-hammer the single-client chip slot.
+function backoffMs(attempt: number): number {
+  const base =
+    attempt <= 0 ? 0
+    : attempt === 1 ? 250
+    : attempt === 2 ? 500
+    : attempt === 3 ? 1000
+    : attempt === 4 ? 2000
+    : 4000;
+  if (attempt < 3) return base;
+  const jittered = base * (1 + (Math.random() * 0.4 - 0.2));
+  return Math.min(jittered, 5000);
+}
 
 type Phase = {
   url: string;
@@ -24,13 +36,8 @@ export function useTeleopSocket(opts: {
 }): SocketState {
   const { url, getCmd } = opts;
 
-  // Phase is only ever written from async WebSocket callbacks. The visible
-  // state for the "connecting" first-attempt case is derived below from
-  // (url is set) AND (phase doesn't match url yet).
   const [phase, setPhase] = useState<Phase | null>(null);
 
-  // Latest-value ref so the 20 Hz send loop always reads the freshest command
-  // without re-subscribing the WebSocket every render. Updated post-render.
   const getCmdRef = useRef(getCmd);
   useEffect(() => {
     getCmdRef.current = getCmd;
@@ -42,7 +49,9 @@ export function useTeleopSocket(opts: {
     let ws: WebSocket | null = null;
     let sendInterval: ReturnType<typeof setInterval> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
+    let attempt = 0;
 
     const clearSend = () => {
       if (sendInterval) {
@@ -51,12 +60,21 @@ export function useTeleopSocket(opts: {
       }
     };
 
+    const clearStability = () => {
+      if (stabilityTimer) {
+        clearTimeout(stabilityTimer);
+        stabilityTimer = null;
+      }
+    };
+
     const scheduleReconnect = () => {
       if (cancelled || reconnectTimer) return;
+      const delay = backoffMs(attempt);
+      attempt += 1;
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (!cancelled) open();
-      }, RECONNECT_DELAY_MS);
+      }, delay);
     };
 
     const open = () => {
@@ -73,23 +91,28 @@ export function useTeleopSocket(opts: {
           return;
         }
         setPhase({ url, status: "connected" });
+        stabilityTimer = setTimeout(() => {
+          attempt = 0;
+          stabilityTimer = null;
+        }, STABILITY_MS);
         sendInterval = setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            const c = getCmdRef.current();
-            ws.send(`${c.vx},${c.vy},${c.omega}`);
-          }
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > BUFFERED_AMOUNT_LIMIT) return;
+          const c = getCmdRef.current();
+          ws.send(`${c.vx},${c.vy},${c.omega}`);
         }, SEND_RATE_MS);
       };
       ws.onclose = () => {
         clearSend();
+        clearStability();
         ws = null;
         if (cancelled) return;
         setPhase({ url, status: "reconnecting" });
         scheduleReconnect();
       };
-      // onerror would only race with onclose for the user-visible state;
-      // onclose always fires after, so we let it own the transition.
-      ws.onerror = () => {};
+      ws.onerror = (e) => {
+        console.warn("teleop ws error", url, e);
+      };
     };
 
     open();
@@ -100,6 +123,7 @@ export function useTeleopSocket(opts: {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      clearStability();
       clearSend();
       if (ws) {
         ws.onopen = null;
