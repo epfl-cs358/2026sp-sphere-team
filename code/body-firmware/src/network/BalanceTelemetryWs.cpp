@@ -10,7 +10,6 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
-#include <new>
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -56,18 +55,23 @@ constexpr const char* kHeaderLine =
     "armed_state,in_fault,cmd_stale,"
     "event_flags";
 
-// --- module state (anonymous namespace, single-instance) -------------------
-
-constexpr std::size_t kRingSize  = BalanceTelemetryWs::kRingSize;
 constexpr std::size_t kQueueLen  = 8;
-constexpr std::size_t kCsvBufLen = 1200;  // ~14 chars/field * 83 fields, padded
+constexpr std::size_t kCsvBufLen = 1200;
+constexpr std::size_t kDtWindow  = 100;
 
 AsyncWebSocket g_ws("/telemetry");
 
-// Heap-allocated lazily in init(). At ~300 B/entry × 512, the ring is ~150 KB —
-// too large for BSS on the robot env (WiFi + AsyncTCP + WS producer already eat
-// most of DRAM). ESP32 heap handles it easily. Static cost is one pointer.
-BalanceTelemetry*                          g_ring = nullptr;
+// Double-buffered "latest" — writer alternates slots, then publishes the
+// new slot via an atomic pointer swap. Readers load-acquire the pointer
+// and copy the slot it points to. Either the old or new struct is seen
+// in full; no torn read.
+BalanceTelemetry                _slotA{};
+BalanceTelemetry                _slotB{};
+std::atomic<BalanceTelemetry*>  _latest{nullptr};
+
+float                           _dtRing[kDtWindow] = {};
+std::atomic<std::uint32_t>      _dtIdx{0};
+
 std::atomic<std::uint32_t>                 g_writeIdx{0};
 std::array<std::atomic<std::uint32_t>, 16> g_eventCounts{};
 std::atomic<std::uint32_t>                 g_dropCount{0};
@@ -77,50 +81,43 @@ std::atomic<bool>                          g_initDone{false};
 QueueHandle_t g_queue = nullptr;
 TaskHandle_t  g_pumpTask = nullptr;
 #else
-// Native: a simple in-process deque models the producer queue. The pump
-// task is not spawned; tests drive pumpOnce() explicitly.
 std::deque<BalanceTelemetry> g_nativeQueue;
 #endif
 
-// --- CSV formatting --------------------------------------------------------
-
 int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
-    // TODO(wave4): wire signs from BalanceConfig once telemetry struct has them.
-    // BalanceTelemetry does not (yet) carry gyro_pitch_sign / gyro_roll_sign;
-    // Wave 1 Agent B left them in BalanceConfig. Emit literal 0,0 placeholders
-    // so the column count matches CSV_COLUMNS — the field positions are fixed,
-    // tooling reads by index. Wave 4 reviewer will reconcile once the
-    // controller copies signs into the live-gain block of BalanceTelemetry.
+    // TODO(wave4): wire gyro_pitch_sign / gyro_roll_sign once the telemetry
+    // struct carries them. Until then emit literal 0,0 to preserve column
+    // positions for the canonical parser.
     return std::snprintf(
         buf, buflen,
-        "%u,%u,%g,%g,"                              // seq, t_us, dt_measured, dt_used
-        "%g,%g,%g,"                                 // cmd_vx_raw, cmd_vy_raw, cmd_omega_raw
-        "%g,%g,%g,%u,"                              // cmd_vx, cmd_vy, cmd_omega, cmd_age_ms
-        "%g,%g,%g,%g,"                              // quat_w/x/y/z
-        "%g,%g,%g,"                                 // accel x/y/z
-        "%g,%g,%g,"                                 // gyro raw x/y/z
-        "%g,%g,%g,%g,"                              // gx, gy, gz, tilt_mag_sin
-        "%g,%g,"                                    // pitch_actual, roll_actual
-        "%g,%g,"                                    // gyro_pitch_rate, gyro_roll_rate
-        "%g,%g,"                                    // pitch_target, roll_target
-        "%g,%g,%g,%g,%g,%g,"                        // pitch_err/P/I/D/out_raw/out
-        "%g,%g,%g,%g,%g,%g,"                        // roll_err/P/I/D/out_raw/out
-        "%g,%g,%g,"                                 // body_vx_cmd, body_vy_cmd, body_omega_cmd
-        "%g,%g,%g,"                                 // wheel_target_rpm_0..2
-        "%g,%g,%g,"                                 // wheel_meas_rpm_0..2
-        "%g,%g,%g,"                                 // wheel_P_0..2
-        "%g,%g,%g,"                                 // wheel_I_0..2
-        "%g,%g,%g,"                                 // wheel_D_0..2
-        "%g,%g,%g,"                                 // wheel_out_0..2
-        "%g,%g,%g,"                                 // pitch_Kp, Ki, Kd
-        "%g,%g,%g,"                                 // roll_Kp, Ki, Kd
-        "%g,%g,"                                    // pitch_deadband, roll_deadband
-        "%g,"                                       // max_output_velocity
-        "%g,%g,"                                    // envelope_enter_sin, envelope_exit_sin
-        "0,0,"                                      // gyro_pitch_sign, gyro_roll_sign (placeholder)
-        "%g,%g,"                                    // tilt_per_velocity, max_tilt_setpoint
-        "%u,%u,%u,"                                 // armed_state, in_fault, cmd_stale
-        "%u",                                       // event_flags
+        "%u,%u,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,%u,"
+        "%g,%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,%g,"
+        "%g,%g,"
+        "%g,%g,"
+        "%g,%g,"
+        "%g,%g,%g,%g,%g,%g,"
+        "%g,%g,%g,%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,%g,"
+        "%g,%g,"
+        "%g,"
+        "%g,%g,"
+        "0,0,"
+        "%g,%g,"
+        "%u,%u,%u,"
+        "%u",
         static_cast<unsigned>(t.seq),
         static_cast<unsigned>(t.t_us),
         static_cast<double>(t.dt_measured),
@@ -230,26 +227,26 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         static_cast<unsigned>(t.event_flags));
 }
 
-// --- pump path -------------------------------------------------------------
-// Format, broadcast, ring-write, and accumulate event counters for one
-// snapshot. Single-writer w.r.t. the ring (only the pump task / pumpOnce
-// reaches here), so the release store on g_writeIdx synchronises readers.
-
 void pumpSnapshot(const BalanceTelemetry& snap) {
-    // Ring lives on the heap and is allocated in init(). If a snapshot makes
-    // it through the queue before init() runs (only possible in tests, since
-    // device path can't publish before queue creation), drop it.
-    if (!g_ring) return;
-
     char line[kCsvBufLen];
     int n = writeCsv(line, sizeof(line), snap);
     if (n > 0 && static_cast<std::size_t>(n) < sizeof(line)) {
         g_ws.textAll(String(line));
     }
 
-    const std::uint32_t idx = g_writeIdx.load(std::memory_order_relaxed);
-    g_ring[idx % kRingSize] = snap;
-    g_writeIdx.store(idx + 1, std::memory_order_release);
+    // Alternate slot, write, publish pointer. First publish picks _slotA.
+    BalanceTelemetry* cur  = _latest.load(std::memory_order_relaxed);
+    BalanceTelemetry* next = (cur == &_slotA) ? &_slotB : &_slotA;
+    *next = snap;
+    _latest.store(next, std::memory_order_release);
+
+    // dt window: skip non-positive samples (pre-first-tick sentinel).
+    if (snap.dt_measured > 0.0f) {
+        const std::uint32_t i = _dtIdx.fetch_add(1, std::memory_order_relaxed);
+        _dtRing[i % kDtWindow] = snap.dt_measured;
+    }
+
+    g_writeIdx.fetch_add(1, std::memory_order_release);
 
     const std::uint32_t flags = snap.event_flags;
     for (std::size_t b = 0; b < g_eventCounts.size(); ++b) {
@@ -286,11 +283,7 @@ void init(AsyncWebServer& server) {
     bool expected = false;
     if (!g_initDone.compare_exchange_strong(expected, true,
                                             std::memory_order_acq_rel)) {
-        return;  // already initialised — idempotent
-    }
-    // ~150 KB on ESP32 heap; avoids BSS pressure that blew the robot link.
-    if (!g_ring) {
-        g_ring = new BalanceTelemetry[kRingSize]{};
+        return;
     }
 #ifdef ARDUINO
     if (!g_queue) {
@@ -302,7 +295,7 @@ void init(AsyncWebServer& server) {
                             /*stack*/ 4096, /*arg*/ nullptr,
                             /*prio*/ 1, &g_pumpTask, /*core*/ 0);
 #else
-    server.addHandler(&g_ws);  // no-op stub
+    server.addHandler(&g_ws);
 #endif
 }
 
@@ -324,20 +317,36 @@ void publish(const BalanceTelemetry& snap) {
 #endif
 }
 
-std::size_t snapshotRecent(BalanceTelemetry* out, std::size_t maxN) {
-    if (!out || maxN == 0 || !g_ring) return 0;
-    const std::uint32_t total = g_writeIdx.load(std::memory_order_acquire);
-    std::size_t avail = total < kRingSize ? static_cast<std::size_t>(total)
-                                          : kRingSize;
-    std::size_t n = avail < maxN ? avail : maxN;
-    if (n == 0) return 0;
-    // Source range: the n most-recent slots in chronological order. The
-    // oldest of those is at index (total - n).
-    const std::uint32_t start = total - static_cast<std::uint32_t>(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        out[i] = g_ring[(start + i) % kRingSize];
+bool latest(BalanceTelemetry* out) {
+    if (!out) return false;
+    BalanceTelemetry* p = _latest.load(std::memory_order_acquire);
+    if (!p) return false;
+    *out = *p;
+    return true;
+}
+
+void dtStats(float* minOut, float* meanOut, float* maxOut) {
+    if (minOut)  *minOut  = 0.0f;
+    if (meanOut) *meanOut = 0.0f;
+    if (maxOut)  *maxOut  = 0.0f;
+    const std::uint32_t n = _dtIdx.load(std::memory_order_acquire);
+    if (n == 0) return;
+    const std::size_t valid = (n < kDtWindow) ? static_cast<std::size_t>(n)
+                                              : kDtWindow;
+    float mn = 1e9f, mx = -1e9f, sum = 0.0f;
+    std::size_t counted = 0;
+    for (std::size_t i = 0; i < valid; ++i) {
+        const float v = _dtRing[i];
+        if (v <= 0.0f) continue;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+        sum += v;
+        ++counted;
     }
-    return n;
+    if (counted == 0) return;
+    if (minOut)  *minOut  = mn;
+    if (maxOut)  *maxOut  = mx;
+    if (meanOut) *meanOut = sum / static_cast<float>(counted);
 }
 
 std::uint32_t eventCount(std::size_t bit) {
@@ -373,12 +382,14 @@ void pumpOnce() {
 }
 
 void resetForTesting() {
+    _latest.store(nullptr, std::memory_order_release);
+    _slotA = BalanceTelemetry{};
+    _slotB = BalanceTelemetry{};
+    _dtIdx.store(0, std::memory_order_release);
+    for (std::size_t i = 0; i < kDtWindow; ++i) _dtRing[i] = 0.0f;
     g_writeIdx.store(0, std::memory_order_release);
     g_dropCount.store(0, std::memory_order_relaxed);
     for (auto& c : g_eventCounts) c.store(0, std::memory_order_relaxed);
-    if (g_ring) {
-        for (std::size_t i = 0; i < kRingSize; ++i) g_ring[i] = BalanceTelemetry{};
-    }
 #ifndef ARDUINO
     g_nativeQueue.clear();
 #endif
