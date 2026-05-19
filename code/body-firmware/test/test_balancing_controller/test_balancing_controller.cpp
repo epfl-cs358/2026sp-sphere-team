@@ -6,9 +6,27 @@
 #include <atomic>
 #include <cmath>
 
+#include <fff.h>
+DEFINE_FFF_GLOBALS;
+
+#include "Preferences.h"
+// FFF fake bodies for Preferences (BalanceTuner pulls in BalanceConfigStorage
+// which in turn references prefs_* shims).
+DEFINE_FAKE_VALUE_FUNC(bool, prefs_begin, const char*, bool);
+DEFINE_FAKE_VALUE_FUNC(size_t, prefs_getBytes, const char*, void*, size_t);
+DEFINE_FAKE_VALUE_FUNC(size_t, prefs_putBytes, const char*, const void*, size_t);
+DEFINE_FAKE_VOID_FUNC(prefs_end);
+
 #include "BalancingDrivetrainController.h"
 #include "BalancingDrivetrainController.cpp"
 #include "BalanceConfig.h"
+#include "ArmingState.h"
+#include "ArmingState.cpp"
+#include "BalanceConfigStorage.h"
+#include "BalanceConfigStorage.cpp"
+#include "BalanceTelemetry.h"
+#include "BalanceTuner.h"
+#include "BalanceTuner.cpp"
 #include "BodyVelocity.h"
 #include "IMUReading.h"
 #include "Drivetrain.h"
@@ -412,6 +430,167 @@ void test_onDisarmed_resets_balance_and_drivetrain_pids() {
     TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
 }
 
+// ---- telemetry tests (Wave 2, Task #4) ------------------------------------
+
+void test_last_telemetry_populated_after_update() {
+    BodyVelocity cmd{0.3f, -0.2f, 0.1f};
+    float tilt = 10.0f * 3.14159265f / 180.0f;
+    IMUReading imuData = makeIMU(pitchedForward(tilt));
+    imuData.accel = Vec3{1.5f, 2.5f, -9.8f};
+    imuData.gyro  = Vec3{0.11f, 0.22f, 0.33f};
+
+    controller->update(cmd, imuData, 0.01f);
+    const BalanceTelemetry& t = controller->lastTelemetry();
+
+    // Timing.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, t.dt_used);
+
+    // Raw inputs (controller mirrors cmd into both raw and post-ramp slots).
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f,  0.3f, t.cmd_vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -0.2f, t.cmd_vy);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f,  0.1f, t.cmd_omega);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f,  0.3f, t.cmd_vx_raw);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -0.2f, t.cmd_vy_raw);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f,  0.1f, t.cmd_omega_raw);
+
+    // Quaternion mirror.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, imuData.orientation.w, t.quat_w);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, imuData.orientation.x, t.quat_x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, imuData.orientation.y, t.quat_y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, imuData.orientation.z, t.quat_z);
+
+    // Accel + raw gyro mirrors.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.5f,  t.accel_x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 2.5f,  t.accel_y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -9.8f, t.accel_z);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.11f, t.gyro_x_raw);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.22f, t.gyro_y_raw);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.33f, t.gyro_z_raw);
+
+    // pitch_actual is the actual pitch angle — non-zero since we tilted.
+    TEST_ASSERT_TRUE(std::fabs(t.pitch_actual) > 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, tilt, t.pitch_actual);
+
+    // Live gain mirrors (cfgBuf is the active config).
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->pitchKp,           t.pitch_Kp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->pitchKi,           t.pitch_Ki);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->pitchKd,           t.pitch_Kd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->rollKp,            t.roll_Kp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->rollKi,            t.roll_Ki);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->rollKd,            t.roll_Kd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->maxOutputVelocity, t.max_output_velocity);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->envelopeEnterSin,  t.envelope_enter_sin);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->envelopeExitSin,   t.envelope_exit_sin);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->tiltPerVelocity,   t.tilt_per_velocity);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->maxTiltSetpoint,   t.max_tilt_setpoint);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->gyroPitchSign,     t.gyro_pitch_sign);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->gyroRollSign,      t.gyro_roll_sign);
+
+    // body_*_cmd mirrors the negated drivetrain command.
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, drivetrain->lastDrive.vx,    t.body_vx_cmd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, drivetrain->lastDrive.vy,    t.body_vy_cmd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, drivetrain->lastDrive.omega, t.body_omega_cmd);
+}
+
+void test_last_telemetry_pitch_pid_terms_match_computation() {
+    // Configure simple gains, well within output limits.
+    BalanceConfig c = makeTestConfig();
+    c.pitchKp = 0.5f;
+    c.pitchKi = 0.0f;
+    c.pitchKd = 0.0f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    float tilt = 5.0f * 3.14159265f / 180.0f;
+    IMUReading imuData = makeIMU(pitchedForward(tilt));
+    controller->update(cmd, imuData, 0.01f);
+
+    const BalanceTelemetry& t = controller->lastTelemetry();
+    // pitch_out_raw = P + I + D for an unsaturated tick.
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, t.pitch_P + t.pitch_I + t.pitch_D, t.pitch_out_raw);
+    // P term = Kp * err, err = target - actual = 0 - tilt = -tilt.
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.5f * (-tilt), t.pitch_P);
+}
+
+void test_fault_enter_bit_set_exactly_once() {
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    float bigTilt = 65.0f * 3.14159265f / 180.0f;
+    IMUReading bad = makeIMU(pitchedForward(bigTilt));
+    controller->update(cmd, bad, 0.01f);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_FAULT_ENTER);
+    TEST_ASSERT_EQUAL(1, controller->lastTelemetry().in_fault);
+
+    // Second tick at the same tilt: still in fault, no re-entry edge.
+    controller->update(cmd, bad, 0.01f);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_FAULT_ENTER);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_FAULT_EXIT);
+    TEST_ASSERT_EQUAL(1, controller->lastTelemetry().in_fault);
+
+    // Drop below exit threshold: FAULT_EXIT bit fires, in_fault clears.
+    IMUReading recovered = makeIMU(upright());
+    controller->update(cmd, recovered, 0.01f);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_FAULT_EXIT);
+    TEST_ASSERT_EQUAL(0, controller->lastTelemetry().in_fault);
+}
+
+void test_in_fault_field_reflects_state() {
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    controller->update(cmd, level, 0.01f);
+    TEST_ASSERT_EQUAL(0, controller->lastTelemetry().in_fault);
+
+    IMUReading bad = makeIMU(pitchedForward(65.0f * 3.14159265f / 180.0f));
+    controller->update(cmd, bad, 0.01f);
+    TEST_ASSERT_EQUAL(1, controller->lastTelemetry().in_fault);
+
+    controller->update(cmd, level, 0.01f);
+    TEST_ASSERT_EQUAL(0, controller->lastTelemetry().in_fault);
+}
+
+void test_pitch_out_saturated_bit_propagates() {
+    BalanceConfig huge = makeTestConfig();
+    huge.pitchKp = 1e6f;
+    huge.maxOutputVelocity = 1.0f;
+    *cfgBuf = huge;
+
+    BodyVelocity cmd{0.5f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    controller->update(cmd, level, 0.01f);
+
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_PITCH_OUT_SATURATED);
+}
+
+void test_set_tuner_consumes_pending_events() {
+    BalanceTuner tuner;
+    tuner.begin(*cfgBuf);
+    // Reset the controller's atomic-slot to point at the tuner's owned slot:
+    // resetToDefaults mutates the tuner's spare and republishes. We assert on
+    // the bit, not on the slot identity.
+    controller->setTuner(&tuner);
+    tuner.resetToDefaults();
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    controller->update(cmd, level, 0.01f);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_CONFIG_RESET);
+
+    // Single-consume: next tick must clear the bit.
+    controller->update(cmd, level, 0.01f);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_CONFIG_RESET);
+}
+
+void test_set_tuner_null_skips_consume() {
+    // No setTuner call. Update must not crash; event_flags must be a sane
+    // subset (PID + fault only — nothing tuner-driven).
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    controller->update(cmd, level, 0.01f);
+
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_CONFIG_RESET);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_GAIN_CHANGED);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags & kEvent_CONFIG_SAVED);
+}
+
 void test_stop_resets_pid_state_and_calls_drivetrain_stop() {
     // Warm-up with Ki > 0 so an integral builds up.
     BalanceConfig hot = makeTestConfig();
@@ -451,6 +630,13 @@ int main() {
     RUN_TEST(test_resetIntegrators_preserves_fault_latch);
     RUN_TEST(test_onArmed_resets_drivetrain_pids_and_balance_integrators);
     RUN_TEST(test_onDisarmed_resets_balance_and_drivetrain_pids);
+    RUN_TEST(test_last_telemetry_populated_after_update);
+    RUN_TEST(test_last_telemetry_pitch_pid_terms_match_computation);
+    RUN_TEST(test_fault_enter_bit_set_exactly_once);
+    RUN_TEST(test_in_fault_field_reflects_state);
+    RUN_TEST(test_pitch_out_saturated_bit_propagates);
+    RUN_TEST(test_set_tuner_consumes_pending_events);
+    RUN_TEST(test_set_tuner_null_skips_consume);
     RUN_TEST(test_stop_resets_pid_state_and_calls_drivetrain_stop);
     return UNITY_END();
 }
