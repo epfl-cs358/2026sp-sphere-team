@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Cmd, Maxes } from "./types";
+import type { Cmd, ControlVerb, Maxes } from "./types";
 
 const ZERO: Cmd = { vx: 0, vy: 0, omega: 0 };
 
@@ -14,19 +14,27 @@ function isEditableTarget(el: Element | null): boolean {
   return (el as HTMLElement).isContentEditable === true;
 }
 
-export function useKeyCommands(maxes: Maxes): {
+export type UseKeyCommandsOptions = {
+  onControl?: (v: ControlVerb) => void;
+};
+
+export function useKeyCommands(
+  maxes: Maxes,
+  options: UseKeyCommandsOptions = {},
+): {
   cmd: Cmd;
   cmdRef: React.RefObject<Cmd>;
 } {
   const [cmd, setCmd] = useState<Cmd>(ZERO);
   const cmdRef = useRef<Cmd>(ZERO);
 
-  // Latest-value ref so the keydown handler reads fresh slider maxes without
-  // re-subscribing every time the user drags. Updated post-render.
+  // Latest-value ref so the keydown handler reads fresh slider maxes /
+  // callbacks without re-subscribing. Inline-assigned during render — never
+  // a useEffect-as-mirror.
   const maxesRef = useRef(maxes);
-  useEffect(() => {
-    maxesRef.current = maxes;
-  });
+  maxesRef.current = maxes;
+  const onControlRef = useRef(options.onControl);
+  onControlRef.current = options.onControl;
 
   useEffect(() => {
     const keys = new Set<string>();
@@ -54,7 +62,24 @@ export function useKeyCommands(maxes: Maxes): {
       setCmd(next);
     };
 
+    const tryControlIntercept = (e: KeyboardEvent): boolean => {
+      if (e.repeat) return false;
+      if (e.metaKey || e.ctrlKey || e.altKey) return false;
+      if (isEditableTarget(document.activeElement)) return false;
+      const cb = onControlRef.current;
+      if (!cb) return false;
+      let verb: ControlVerb | null = null;
+      if (e.key === "k" || e.key === "K") verb = "kill";
+      else if (e.key === "1") verb = "arm";
+      else if (e.key === "0") verb = "disarm";
+      if (!verb) return false;
+      cb(verb);
+      e.preventDefault();
+      return true;
+    };
+
     const onDown = (e: KeyboardEvent) => {
+      if (tryControlIntercept(e)) return;
       if (isEditableTarget(document.activeElement)) return;
       if (e.repeat) return;
       keys.add(e.key);

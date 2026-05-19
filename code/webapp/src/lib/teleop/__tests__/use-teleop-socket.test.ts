@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useTeleopSocket } from "../use-teleop-socket";
-import type { Cmd } from "../types";
+import type { Cmd, ControlVerb } from "../types";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -45,6 +45,7 @@ class MockWebSocket {
 }
 
 const noopCmd = (): Cmd => ({ vx: 0, vy: 0, omega: 0 });
+const isArmedTrue = () => true;
 
 describe("useTeleopSocket", () => {
   const originalWebSocket = globalThis.WebSocket;
@@ -65,21 +66,21 @@ describe("useTeleopSocket", () => {
 
   it("connects to the provided url on mount", () => {
     const { result } = renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0].url).toBe("ws://localhost:9000");
-    expect(result.current).toBe("connecting");
+    expect(result.current.state).toBe("connecting");
 
     act(() => {
       MockWebSocket.instances[0].simulateOpen();
     });
-    expect(result.current).toBe("connected");
+    expect(result.current.state).toBe("connected");
   });
 
   it("sends frames at 20 Hz when connected", () => {
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     act(() => {
       MockWebSocket.instances[0].simulateOpen();
@@ -92,7 +93,7 @@ describe("useTeleopSocket", () => {
 
   it("skips send when bufferedAmount exceeds threshold", () => {
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     act(() => {
       MockWebSocket.instances[0].simulateOpen();
@@ -106,7 +107,7 @@ describe("useTeleopSocket", () => {
 
   it("reconnects with backoff schedule", () => {
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     expect(MockWebSocket.instances).toHaveLength(1);
 
@@ -149,7 +150,7 @@ describe("useTeleopSocket", () => {
   it("applies jitter from attempt 3", () => {
     Math.random = () => 0.5; // jitter factor = 1 + (0.5 * 0.4 - 0.2) = 1.0; we just want it deterministic-in-range
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
 
     // close 4 times, advancing past each scheduled delay
@@ -196,7 +197,7 @@ describe("useTeleopSocket", () => {
 
   it("resets attempt counter after a stable connection", () => {
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     // attempt 0 close → 0ms reconnect
     act(() => {
@@ -226,7 +227,7 @@ describe("useTeleopSocket", () => {
   it("caps backoff at 5000 ms", () => {
     Math.random = () => 1; // max jitter (+20%): 4000 * 1.2 = 4800, still ≤ 5000
     renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
 
     // Burn through attempts 0..5 to land in the capped regime.
@@ -256,7 +257,7 @@ describe("useTeleopSocket", () => {
 
   it("cleanup cancels pending reconnect", () => {
     const { unmount } = renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     act(() => {
       MockWebSocket.instances[0].simulateClose();
@@ -274,22 +275,170 @@ describe("useTeleopSocket", () => {
       useTeleopSocket({ url: null, getCmd: noopCmd }),
     );
     expect(MockWebSocket.instances).toHaveLength(0);
-    expect(result.current).toBe("idle");
+    expect(result.current.state).toBe("idle");
   });
 
   it("onerror does not change phase but logs", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { result } = renderHook(() =>
-      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd }),
+      useTeleopSocket({ url: "ws://localhost:9000", getCmd: noopCmd, isArmed: isArmedTrue }),
     );
     act(() => {
       MockWebSocket.instances[0].simulateOpen();
     });
-    expect(result.current).toBe("connected");
+    expect(result.current.state).toBe("connected");
     act(() => {
       MockWebSocket.instances[0].simulateError();
     });
-    expect(result.current).toBe("connected");
+    expect(result.current.state).toBe("connected");
     expect(warn).toHaveBeenCalled();
+  });
+
+  // ---- New tests for Slice B ----
+
+  it.each<[ControlVerb, string]>([
+    ["arm", "c:arm"],
+    ["disarm", "c:disarm"],
+    ["kill", "c:kill"],
+    ["clearkill", "c:clearkill"],
+  ])("sendControl emits exact bytes for verb=%s", (verb, expected) => {
+    const { result } = renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+    });
+    let ret: "sent" | "dropped" | undefined;
+    act(() => {
+      ret = result.current.sendControl(verb);
+    });
+    expect(ret).toBe("sent");
+    const calls = MockWebSocket.instances[0].send.mock.calls;
+    // Filter out any 20Hz velocity sends that might be queued
+    const controlCalls = calls.filter((c) =>
+      typeof c[0] === "string" && (c[0] as string).startsWith("c:"),
+    );
+    expect(controlCalls.length).toBeGreaterThanOrEqual(1);
+    expect(controlCalls[0][0]).toBe(expected);
+  });
+
+  it("velocity loop is suppressed while isArmed returns false", () => {
+    const isArmed = vi.fn(() => false);
+    renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(MockWebSocket.instances[0].send).not.toHaveBeenCalled();
+  });
+
+  it("onDrop fires only after ws had opened (open then close)", () => {
+    const onDrop = vi.fn();
+    renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+        onDrop,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+    });
+    act(() => {
+      MockWebSocket.instances[0].simulateClose();
+    });
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it("onDrop does NOT fire when ws closes without ever opening", () => {
+    const onDrop = vi.fn();
+    renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+        onDrop,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateClose();
+    });
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("sendControl returns 'dropped' when ws not open", () => {
+    const { result } = renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+      }),
+    );
+    // Do NOT simulate open — ws is in CONNECTING state.
+    let ret: "sent" | "dropped" | undefined;
+    act(() => {
+      ret = result.current.sendControl("kill");
+    });
+    expect(ret).toBe("dropped");
+    expect(MockWebSocket.instances[0].send).not.toHaveBeenCalled();
+  });
+
+  it("sendControl never gates on bufferedAmount (regression guard for kill)", () => {
+    const { result } = renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+    });
+    MockWebSocket.instances[0].bufferedAmount = 9999;
+    let ret: "sent" | "dropped" | undefined;
+    act(() => {
+      ret = result.current.sendControl("kill");
+    });
+    expect(ret).toBe("sent");
+    const calls = MockWebSocket.instances[0].send.mock.calls;
+    const controlCalls = calls.filter((c) =>
+      typeof c[0] === "string" && (c[0] as string).startsWith("c:"),
+    );
+    expect(controlCalls[0][0]).toBe("c:kill");
+  });
+
+  it("velocity loop SKIPS send when bufferedAmount > 256 (regression guard)", () => {
+    renderHook(() =>
+      useTeleopSocket({
+        url: "ws://localhost:9000",
+        getCmd: noopCmd,
+        isArmed: isArmedTrue,
+      }),
+    );
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+    });
+    MockWebSocket.instances[0].bufferedAmount = 300;
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    // No velocity bytes should have been sent.
+    const velocityCalls = MockWebSocket.instances[0].send.mock.calls.filter(
+      (c) => typeof c[0] === "string" && !(c[0] as string).startsWith("c:"),
+    );
+    expect(velocityCalls.length).toBe(0);
   });
 });
