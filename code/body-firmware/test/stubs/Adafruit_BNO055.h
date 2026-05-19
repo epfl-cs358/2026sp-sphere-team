@@ -5,8 +5,9 @@
 #include "Wire.h"
 
 typedef enum {
-    OPERATION_MODE_CONFIG = 0x00,
-    OPERATION_MODE_NDOF   = 0x0C
+    OPERATION_MODE_CONFIG  = 0x00,
+    OPERATION_MODE_IMUPLUS = 0x08,
+    OPERATION_MODE_NDOF    = 0x0C
 } adafruit_bno055_opmode_t;
 
 typedef enum {

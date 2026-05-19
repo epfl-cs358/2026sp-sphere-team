@@ -11,6 +11,7 @@
 #include <Preferences.h>
 #include <Arduino.h>
 #include "debug.h"
+#include "RemoteSerial.h"
 
 class BNO055IMU : public IMU<IMUReading> {
 public:
@@ -23,9 +24,14 @@ public:
     bool begin() override {
         BB8_ASSERT(!_initialized, "BNO055: begin() called twice");
 
-        if (!_bno.begin(OPERATION_MODE_NDOF)) return false;
+        // IMUPLUS: gyro + accel fusion only. No magnetometer — the 3 nearby
+        // motors corrupt mag readings, and a balancing robot needs gravity
+        // vector + angular rate, not absolute heading. Adafruit lib's
+        // isFullyCalibrated() in IMUPLUS checks (accel == 3 && gyro == 3)
+        // and ignores mag/sys.
+        if (!_bno.begin(OPERATION_MODE_IMUPLUS)) return false;
         _bno.setExtCrystalUse(true);
-        restoreCalibration();
+        _restored = restoreCalibration();
         _initialized = true;
         return true;
     }
@@ -83,13 +89,24 @@ public:
         return _bno.isFullyCalibrated();
     }
 
+    // True iff begin() found valid offsets in NVS and pushed them to the
+    // chip. Lets the calibration-wait loop fast-path: chip's cal counters
+    // lag the offsets by ~10–20s after a restore even though it's already
+    // functionally calibrated, so a warm-boot wait should only gate on the
+    // gyro hold-still rather than the full isCalibrated() check.
+    bool wasRestored() const { return _restored; }
+
 private:
     Adafruit_BNO055 _bno;
     IMUField _fields;
     bool _initialized = false;
     bool _savedThisBoot = false;
+    bool _restored = false;
 
-    void restoreCalibration() {
+    // Returns true iff a valid 22-byte offsets blob was found in NVS and
+    // pushed to the chip. Diagnostic log goes to RemoteSerial so the
+    // operator sees in WebSerial whether the warm-boot path is in effect.
+    bool restoreCalibration() {
         Preferences prefs;
         prefs.begin("bno055", true);
         uint8_t buf[OFFSET_SIZE];
@@ -99,9 +116,13 @@ private:
             _bno.setMode(OPERATION_MODE_CONFIG);
             delay(MODE_SETTLE_MS);
             _bno.setSensorOffsets(buf);
-            _bno.setMode(OPERATION_MODE_NDOF);
+            _bno.setMode(OPERATION_MODE_IMUPLUS);
             delay(MODE_SETTLE_MS);
+            RemoteSerial::println("[imu] offsets restored from NVS");
+            return true;
         }
+        RemoteSerial::println("[imu] no saved offsets; cold calibration required");
+        return false;
     }
 
     void saveCalibration() {
