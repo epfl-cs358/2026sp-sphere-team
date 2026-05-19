@@ -27,13 +27,33 @@ BalanceTelemetry makeSnap(uint32_t seq, uint32_t flags = 0) {
 
 }  // namespace
 
+// Singleton server used by tests that need an initialised module. AsyncWebServer
+// on native is a stub; sharing one instance across tests keeps init() idempotent
+// without per-test churn.
+AsyncWebServer& testServer() {
+    static AsyncWebServer s(81);
+    return s;
+}
+
 void setUp() {
     BalanceTelemetryWs::resetForTesting();
 }
 
 void tearDown() {}
 
+void test_pump_before_init_is_noop() {
+    // With the ring heap-allocated lazily in init(), publish + pumpOnce
+    // before init() must NOT write to a ring (there isn't one yet).
+    // snapshotRecent() therefore reports nothing. Catches regressions to
+    // static-BSS allocation that would link-fail the robot env.
+    BalanceTelemetryWs::publish(makeSnap(1));
+    BalanceTelemetryWs::pumpOnce();
+    BalanceTelemetry buf[1]{};
+    TEST_ASSERT_EQUAL_UINT32(0, BalanceTelemetryWs::snapshotRecent(buf, 1));
+}
+
 void test_publish_to_full_queue_increments_drop_count() {
+    BalanceTelemetryWs::init(testServer());
     // Publish many snapshots without draining. Whatever queue depth the
     // implementation picks, sustained over-publish must register drops.
     constexpr uint32_t kBlast = 2048;
@@ -46,6 +66,7 @@ void test_publish_to_full_queue_increments_drop_count() {
 }
 
 void test_snapshot_recent_returns_last_n() {
+    BalanceTelemetryWs::init(testServer());
     for (uint32_t i = 1; i <= 10; ++i) {
         BalanceTelemetryWs::publish(makeSnap(i));
         BalanceTelemetryWs::pumpOnce();
@@ -59,6 +80,7 @@ void test_snapshot_recent_returns_last_n() {
 }
 
 void test_snapshot_recent_caps_at_max_n() {
+    BalanceTelemetryWs::init(testServer());
     for (uint32_t i = 1; i <= 5; ++i) {
         BalanceTelemetryWs::publish(makeSnap(i));
         BalanceTelemetryWs::pumpOnce();
@@ -72,6 +94,7 @@ void test_snapshot_recent_caps_at_max_n() {
 }
 
 void test_event_counter_ticks_on_matching_bit() {
+    BalanceTelemetryWs::init(testServer());
     BalanceTelemetryWs::publish(
         makeSnap(1, kEvent_ARMED_EDGE | kEvent_GAIN_CHANGED));
     BalanceTelemetryWs::pumpOnce();
@@ -81,6 +104,7 @@ void test_event_counter_ticks_on_matching_bit() {
 }
 
 void test_event_counter_accumulates() {
+    BalanceTelemetryWs::init(testServer());
     for (int i = 0; i < 3; ++i) {
         BalanceTelemetryWs::publish(makeSnap(static_cast<uint32_t>(i + 1),
                                              kEvent_FAULT_ENTER));
@@ -90,6 +114,7 @@ void test_event_counter_accumulates() {
 }
 
 void test_ring_wraps_after_kRingSize() {
+    BalanceTelemetryWs::init(testServer());
     constexpr uint32_t kTotal =
         static_cast<uint32_t>(BalanceTelemetryWs::kRingSize) + 10;
     for (uint32_t i = 1; i <= kTotal; ++i) {
@@ -122,10 +147,9 @@ void test_header_line_matches_canonical_columns() {
 }
 
 void test_init_is_idempotent() {
-    AsyncWebServer server(81);
-    BalanceTelemetryWs::init(server);
-    BalanceTelemetryWs::init(server);
-    BalanceTelemetryWs::init(server);
+    BalanceTelemetryWs::init(testServer());
+    BalanceTelemetryWs::init(testServer());
+    BalanceTelemetryWs::init(testServer());
     // No assertion needed — must not crash, must not double-spawn anything.
     // We sanity-check that publish/pump still works after repeated init.
     BalanceTelemetryWs::publish(makeSnap(42));
@@ -137,6 +161,7 @@ void test_init_is_idempotent() {
 
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_pump_before_init_is_noop);
     RUN_TEST(test_publish_to_full_queue_increments_drop_count);
     RUN_TEST(test_snapshot_recent_returns_last_n);
     RUN_TEST(test_snapshot_recent_caps_at_max_n);
