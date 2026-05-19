@@ -378,8 +378,8 @@ def _step_session(synthetic_csv, *, step_idx: int, step_from: float, step_to: fl
 
 
 def test_step_response_detects_setpoint_jump_in_synthetic_csv(synthetic_csv):
-    # zeta=0.5, wn=10 → ~16.3% overshoot, ~0.12 s rise time.
-    shape = lambda t: _underdamped_response(t, zeta=0.5, wn=10.0)
+    # zeta=0.5, wn=18 → ~16.3% overshoot, ~0.12 s 0-to-90% rise time.
+    shape = lambda t: _underdamped_response(t, zeta=0.5, wn=18.0)
     session_dir = _step_session(
         synthetic_csv,
         step_idx=100, step_from=0.0, step_to=0.05, shape=shape,

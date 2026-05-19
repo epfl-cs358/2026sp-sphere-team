@@ -577,6 +577,200 @@ def cmd_oscillation(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- STEP RESPONSE -------------------------------------------------------
+
+
+def _detect_step(target: np.ndarray, dt_meas: np.ndarray) -> int | None:
+    """Index of the largest discrete jump in target (dt_measured[i] < 0.2 s).
+
+    Returns None if no row satisfies the discrete-jump criterion.
+    """
+    if len(target) < 2:
+        return None
+    diffs = np.abs(np.diff(target))
+    dt_ok = dt_meas[1:] < 0.2
+    # Mask out non-discrete or zero-diff rows.
+    masked = np.where(dt_ok & (diffs > 0), diffs, -1.0)
+    if not np.any(masked > 0):
+        return None
+    return int(np.argmax(masked)) + 1  # +1: diff at i is between i-1 and i
+
+
+def _step_metrics(t: np.ndarray, actual: np.ndarray, y0: float, y_target: float,
+                  delta: float) -> dict:
+    """Compute rise/peak/overshoot/settle/decay from the post-step trace.
+
+    `t` is seconds relative to the step instant (t[0] == 0 corresponds to the
+    row where the target jumped).
+    """
+    sign = 1.0 if delta >= 0 else -1.0
+    abs_delta = abs(delta)
+    progress = (actual - y0) * sign  # signed so the curve always rises
+    # Rise time: first crossing of 0.9 * abs_delta
+    rise_mask = progress >= 0.9 * abs_delta
+    rise_time = float(t[np.argmax(rise_mask)]) if rise_mask.any() else float(t[-1])
+
+    # Peak search window: [0, 5 * rise_time], clamped to available samples
+    peak_end = min(len(t), int(np.searchsorted(t, max(rise_time * 5.0, rise_time + 0.05))) + 1)
+    peak_end = max(peak_end, 2)
+    excess = (actual[:peak_end] - y_target) * sign
+    peak_i = int(np.argmax(excess))
+    y_peak = float(actual[peak_i])
+    overshoot_pct = max(0.0, float(excess[peak_i] / abs_delta) * 100.0)
+    time_to_peak = float(t[peak_i])
+
+    # Settling time: last row outside ±5% band.
+    band = 0.05 * abs_delta
+    outside = np.abs(actual - y_target) > band
+    if outside.any():
+        last_out = int(np.where(outside)[0][-1])
+        settling_time = float(t[last_out])
+        settled = settling_time < float(t[-1]) - 1e-9
+    else:
+        settling_time = 0.0
+        settled = True
+
+    # Decay ratio: second peak in the same direction as Δ after a trough.
+    # Search after peak_i for a trough, then for the next maximum past it.
+    decay_ratio = 0.0
+    if peak_i + 2 < len(actual):
+        # Find first index after peak_i where excess decreases below 0
+        excess_full = (actual - y_target) * sign
+        post = excess_full[peak_i:]
+        trough_rel = int(np.argmin(post))
+        trough_i = peak_i + trough_rel
+        if trough_i + 2 < len(actual):
+            tail = excess_full[trough_i:]
+            second_rel = int(np.argmax(tail))
+            second_i = trough_i + second_rel
+            if second_i > trough_i and excess_full[second_i] > 0:
+                decay_ratio = float(excess_full[second_i] / excess_full[peak_i])
+
+    # Steady-state error: mean of actual over last 200 ms, minus y_target.
+    if t[-1] >= 0.2:
+        tail_mask = t >= (t[-1] - 0.2)
+        ss_mean = float(np.mean(actual[tail_mask])) if tail_mask.any() else float(actual[-1])
+    else:
+        ss_mean = float(actual[-1])
+    ss_error = ss_mean - y_target
+
+    # Zero-crossings of (actual - y_target).
+    err = actual - y_target
+    signs = np.sign(err)
+    n_oscillations = int(np.sum(np.diff(signs) != 0))
+
+    return {
+        "rise_time_s": rise_time,
+        "time_to_peak_s": time_to_peak,
+        "peak": y_peak,
+        "overshoot_pct": overshoot_pct,
+        "settling_time_s": settling_time,
+        "settled": settled,
+        "decay_ratio": decay_ratio,
+        "ss_error": ss_error,
+        "n_oscillations": n_oscillations,
+    }
+
+
+def _step_response_plot(out: Path, t_rel: np.ndarray, actual: np.ndarray,
+                        target: np.ndarray, y_target: float, abs_delta: float,
+                        metrics: dict, axis: str) -> None:
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    ax.plot(t_rel, actual, label=f"{axis}_actual")
+    ax.plot(t_rel, target, label=f"{axis}_target", linestyle="--")
+    band = 0.05 * abs_delta
+    ax.axhline(y_target + band, color="gray", linestyle=":", linewidth=0.8)
+    ax.axhline(y_target - band, color="gray", linestyle=":", linewidth=0.8)
+    for label, key in (("t_r", "rise_time_s"), ("t_p", "time_to_peak_s"), ("t_s", "settling_time_s")):
+        x = metrics.get(key, 0.0)
+        ax.axvline(x, color="red", linestyle=":", linewidth=0.8)
+        ax.text(x, ax.get_ylim()[1], label, color="red", fontsize=8, va="top")
+    ax.set_xlabel("t [s] (relative to step)")
+    ax.set_ylabel(axis)
+    ax.set_title(
+        f"{axis} step response  os={metrics['overshoot_pct']:.1f}%  "
+        f"t_r={metrics['rise_time_s']*1000:.0f}ms  t_s={metrics['settling_time_s']*1000:.0f}ms"
+    )
+    ax.legend(loc="lower right", fontsize=8)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(out, dpi=100)
+    plt.close(fig)
+
+
+def cmd_step_response(args: argparse.Namespace) -> int:
+    session_dir = _resolve_session(Path(args.root).expanduser(), args.session)
+    df = _load_session_df(session_dir)
+    if args.window:
+        df = _window_slice(df, _parse_window(args.window), None)
+    if df.empty:
+        sys.stderr.write("step-response: empty window\n")
+        sys.stdout.write(json.dumps({"error": "empty window"}) + "\n")
+        return 1
+    target_col = f"{args.axis}_target"
+    actual_col = f"{args.axis}_actual"
+    if target_col not in df.columns or actual_col not in df.columns:
+        sys.stderr.write(f"step-response: missing {target_col}/{actual_col}\n")
+        sys.stdout.write(json.dumps({"error": "missing columns"}) + "\n")
+        return 1
+
+    target = df[target_col].to_numpy()
+    actual = df[actual_col].to_numpy()
+    t_us = df["t_us"].to_numpy()
+    dt_meas = df["dt_measured"].to_numpy() if "dt_measured" in df.columns else np.full(len(df), 0.01)
+
+    if args.at is not None:
+        at_us = int(args.at)
+        idxs = np.where(t_us >= at_us)[0]
+        if len(idxs) == 0 or idxs[0] == 0:
+            sys.stderr.write(f"step-response: --at t_us={at_us} outside window\n")
+            sys.stdout.write(json.dumps({"error": "at outside window"}) + "\n")
+            return 1
+        step_i = int(idxs[0])
+    else:
+        step_i = _detect_step(target, dt_meas)
+        if step_i is None:
+            sys.stderr.write(
+                "step-response: no step detected; widen with --window or pin with --at <t_us>\n"
+            )
+            sys.stdout.write(json.dumps({"error": "no step detected"}) + "\n")
+            return 1
+
+    y0 = float(actual[step_i - 1])
+    y_target = float(target[step_i])
+    delta = y_target - y0
+    if abs(delta) < 1e-4:
+        sys.stderr.write("step-response: step too small (<1e-4 rad)\n")
+        sys.stdout.write(json.dumps({"error": "step too small"}) + "\n")
+        return 1
+
+    t0_us = int(t_us[step_i])
+    t_rel = (t_us[step_i:] - t0_us) * 1e-6
+    actual_post = actual[step_i:]
+    target_post = target[step_i:]
+    metrics = _step_metrics(t_rel, actual_post, y0, y_target, delta)
+
+    out_json = {
+        "axis": args.axis,
+        "session_id": session_dir.name,
+        "t0_us": t0_us,
+        "target": y_target,
+        "y0": y0,
+        "step": delta,
+        **metrics,
+        "window_rows": int(len(df)),
+    }
+
+    if args.out:
+        _step_response_plot(
+            Path(args.out).expanduser(), t_rel, actual_post, target_post,
+            y_target, abs(delta), metrics, args.axis,
+        )
+
+    sys.stdout.write(json.dumps(out_json, indent=2) + "\n")
+    return 0
+
+
 # --- MANIFEST ------------------------------------------------------------
 
 
@@ -737,6 +931,14 @@ def build_parser() -> argparse.ArgumentParser:
     po.add_argument("--axis", choices=["pitch", "roll"], required=True)
     po.add_argument("--window", default="10s")
     po.set_defaults(func=cmd_oscillation)
+
+    psr = sub.add_parser("step-response", help="Step-response curve metrics for an axis")
+    _add_common_session_args(psr)
+    psr.add_argument("--axis", choices=["pitch", "roll"], required=True)
+    psr.add_argument("--window", default="30s")
+    psr.add_argument("--at", type=int, default=None, help="t_us to pin step (else auto-detect)")
+    psr.add_argument("--out", default=None, help="Optional PNG output path")
+    psr.set_defaults(func=cmd_step_response)
 
     pm = sub.add_parser("manifest", help="Per-session manifest.json")
     _add_common_session_args(pm)
