@@ -164,6 +164,8 @@ def synthetic_csv(tmp_path: Path) -> Callable[..., Path]:
         events: dict[int, int] | None = None,
         gain_changes: dict[int, dict] | None = None,
         session: str = "synthetic",
+        # Per-row overrides for arbitrary columns: takes row index, returns dict.
+        row_override: Callable[[int, float], dict] | None = None,
     ) -> Path:
         session_dir = tmp_path / "sessions" / session
         rows = []
@@ -190,6 +192,8 @@ def synthetic_csv(tmp_path: Path) -> Callable[..., Path]:
                 overrides.update(cur_gains)
             if events and i in events:
                 overrides["event_flags"] = events[i]
+            if row_override is not None:
+                overrides.update(row_override(i, t))
             rows.append(_row(seq=i, t_us=t_us, **overrides))
         write_csv(session_dir / "telemetry.csv", rows)
         # Minimal manifest so manifest-aware commands can read it.

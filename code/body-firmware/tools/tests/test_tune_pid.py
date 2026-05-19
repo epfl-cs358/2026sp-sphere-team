@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Callable
 
 import pytest
 
@@ -331,6 +332,137 @@ def test_sessions_lists_all_session_dirs(synthetic_csv):
     assert by_name["a"]["row_count"] == 10
     assert by_name["b"]["row_count"] == 20
     assert by_name["c"]["row_count"] == 30
+
+
+# --- step-response -------------------------------------------------------
+
+
+def _underdamped_response(t: float, zeta: float, wn: float) -> float:
+    """Unit step response of a 2nd-order system, 0 ≤ zeta < 1."""
+    if t <= 0:
+        return 0.0
+    wd = wn * math.sqrt(1.0 - zeta * zeta)
+    return 1.0 - math.exp(-zeta * wn * t) * (math.cos(wd * t) + (zeta * wn / wd) * math.sin(wd * t))
+
+
+def _critically_damped_response(t: float, wn: float) -> float:
+    if t <= 0:
+        return 0.0
+    return 1.0 - (1.0 + wn * t) * math.exp(-wn * t)
+
+
+def _step_session(synthetic_csv, *, step_idx: int, step_from: float, step_to: float,
+                  shape: Callable[[float], float], n_rows: int = 3000,
+                  sample_rate_hz: float = 1000.0, session: str = "stepresp") -> Path:
+    """Build a session whose pitch_target jumps once and pitch_actual follows `shape`.
+
+    `shape(t)` is the unit step response (0→1). Scaled to (step_to - step_from)
+    and added to step_from. `t` is seconds since the step instant.
+    """
+    dt = 1.0 / sample_rate_hz
+
+    def row_override(i: int, t: float) -> dict:
+        if i < step_idx:
+            return {"pitch_target": step_from, "pitch_actual": step_from}
+        tau = (i - step_idx) * dt
+        delta = step_to - step_from
+        return {
+            "pitch_target": step_to,
+            "pitch_actual": step_from + delta * shape(tau),
+        }
+
+    return synthetic_csv(
+        n_rows=n_rows, sample_rate_hz=sample_rate_hz, session=session,
+        row_override=row_override,
+    )
+
+
+def test_step_response_detects_setpoint_jump_in_synthetic_csv(synthetic_csv):
+    # zeta=0.5, wn=10 → ~16.3% overshoot, ~0.12 s rise time.
+    shape = lambda t: _underdamped_response(t, zeta=0.5, wn=10.0)
+    session_dir = _step_session(
+        synthetic_csv,
+        step_idx=100, step_from=0.0, step_to=0.05, shape=shape,
+        n_rows=3000, sample_rate_hz=1000.0,
+    )
+    root = session_dir.parents[1]
+    r = run_tool(
+        "step-response",
+        "--root", str(root),
+        "--session", session_dir.name,
+        "--axis", "pitch",
+        "--window", "3s",
+    )
+    assert r.returncode == 0, r.stderr
+    j = json.loads(r.stdout)
+    assert j["axis"] == "pitch"
+    assert j["overshoot_pct"] == pytest.approx(16.3, abs=3.0)
+    assert j["rise_time_s"] == pytest.approx(0.12, abs=0.03)
+    assert j["settling_time_s"] > j["rise_time_s"]
+
+
+def test_step_response_refuses_when_no_step_found(synthetic_csv):
+    session_dir = synthetic_csv(
+        n_rows=500, sample_rate_hz=1000.0,
+        row_override=lambda i, t: {"pitch_target": 0.0, "pitch_actual": 0.0},
+    )
+    root = session_dir.parents[1]
+    r = run_tool(
+        "step-response",
+        "--root", str(root),
+        "--session", session_dir.name,
+        "--axis", "pitch",
+        "--window", "0.5s",
+    )
+    assert r.returncode != 0
+    j = json.loads(r.stdout)
+    assert "no step detected" in j.get("error", "")
+    err = r.stderr.lower()
+    assert "--at" in err or "--window" in err
+
+
+def test_step_response_decay_ratio_zero_for_critically_damped(synthetic_csv):
+    shape = lambda t: _critically_damped_response(t, wn=8.0)
+    session_dir = _step_session(
+        synthetic_csv,
+        step_idx=100, step_from=0.0, step_to=0.05, shape=shape,
+        n_rows=3000, sample_rate_hz=1000.0, session="critdamp",
+    )
+    root = session_dir.parents[1]
+    r = run_tool(
+        "step-response",
+        "--root", str(root),
+        "--session", session_dir.name,
+        "--axis", "pitch",
+        "--window", "3s",
+    )
+    assert r.returncode == 0, r.stderr
+    j = json.loads(r.stdout)
+    assert j["overshoot_pct"] < 1.0
+    assert j["decay_ratio"] == pytest.approx(0.0, abs=0.01)
+
+
+def test_step_response_handles_negative_step(synthetic_csv):
+    # zeta=0.6, wn=10 → ~9.5% overshoot on a downward step.
+    shape = lambda t: _underdamped_response(t, zeta=0.6, wn=10.0)
+    session_dir = _step_session(
+        synthetic_csv,
+        step_idx=100, step_from=0.05, step_to=0.0, shape=shape,
+        n_rows=3000, sample_rate_hz=1000.0, session="negstep",
+    )
+    root = session_dir.parents[1]
+    r = run_tool(
+        "step-response",
+        "--root", str(root),
+        "--session", session_dir.name,
+        "--axis", "pitch",
+        "--window", "3s",
+    )
+    assert r.returncode == 0, r.stderr
+    j = json.loads(r.stdout)
+    assert j["step"] < 0
+    assert j["overshoot_pct"] > 0
+    assert j["rise_time_s"] > 0
 
 
 def test_plot_creates_png(synthetic_csv, tmp_path):
