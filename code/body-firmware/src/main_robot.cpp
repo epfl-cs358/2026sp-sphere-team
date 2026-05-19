@@ -29,6 +29,9 @@
 #include "BalanceTuner.h"
 #include "BalanceConfigStorage.h"
 #include "ArmingState.h"
+#include "BalanceHttpApi.h"
+#include "ArmingHttpApi.h"
+#include "RemoteSerial.h"
 
 #include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-robot");
@@ -36,7 +39,6 @@ OTA_SAFE_MODE_FOR("bb8-robot");
 namespace {
 
 using RobotConstants::STALENESS_TIMEOUT_MS;
-using RobotConstants::STALE_DISARM_MS;
 using RobotConstants::CONTROL_PERIOD_MS;
 
 constexpr uint16_t WS_PORT                  = 80;
@@ -92,18 +94,20 @@ const char* armingStateName(ArmingState::State s) {
 // RemoteSerial verb dispatcher: arm / disarm / kill / clearkill / armstate.
 // Whitespace-trimmed; unknown verbs echo back to the browser. Mirrors the
 // WebSocket producer's control-frame routing for bench operation without UI.
+//
+// arm/disarm/kill produce no echo here — ArmingState::* logs the transition
+// itself via arming_log() (Serial + RemoteSerial), so a second print would
+// duplicate. armstate is a pure query and clearkill from non-Killed is a
+// FSM no-op, so both still echo the current state explicitly.
 void handleRemoteSerialLine(const String& line) {
     String verb = line;
     verb.trim();
     if (verb == "arm") {
         ArmingState::arm();
-        RemoteSerial::println("[arming] Armed");
     } else if (verb == "disarm") {
         ArmingState::disarm();
-        RemoteSerial::println("[arming] Disarmed");
     } else if (verb == "kill") {
         ArmingState::kill();
-        RemoteSerial::println("[arming] Killed");
     } else if (verb == "clearkill") {
         ArmingState::clearKill();
         RemoteSerial::printf("[arming] %s\n", armingStateName(ArmingState::get()));
@@ -117,15 +121,34 @@ void handleRemoteSerialLine(const String& line) {
     }
 }
 
-// Block until the BNO055 reports full calibration on all four subsystems.
+// Block until the BNO055 is calibrated enough to fuse a stable orientation.
 // Producer and control task are deliberately left un-started by the caller so
 // no commands flow and no PWM is written while we wait. OtaSafeMode must be
 // initialized first so the robot stays reflashable while gated here.
+//
+// IMUPLUS mode: isCalibrated() = (gyro == 3 && accel == 3). Mag/sys ignored.
+//
+// Two paths:
+//   - Warm boot (NVS hit, offsets restored): chip's cal counters lag the
+//     offsets by ~10–20s but the fusion is already good. Only wait for gyro
+//     to settle — sub-second on a stationary chip.
+//   - Cold boot (no NVS): operator must do 6 stable accel orientations,
+//     ~10s each. Total ~60s with a deliberate cube fixture.
 void waitForCalibration() {
-    RemoteSerial::println("[cal] waiting for BNO055 full calibration before arming.");
+    if (g_imu.wasRestored()) {
+        RemoteSerial::println("[cal] warm boot — waiting for gyro to settle.");
+        while (g_imu.read().calibration.gyro < 3) {
+            BringUp::tick();
+            delay(CAL_POLL_PERIOD_MS);
+        }
+        RemoteSerial::println("[cal] gyro settled — arming teleop.");
+        return;
+    }
+
+    RemoteSerial::println("[cal] cold boot — full IMUPLUS calibration required.");
     RemoteSerial::println("[cal]   gyro:  hold still");
-    RemoteSerial::println("[cal]   accel: 6 distinct orientations, hold each ~2s");
-    RemoteSerial::println("[cal]   mag:   slow figure-8 in the air");
+    RemoteSerial::println("[cal]   accel: 6 distinct stable orientations, hold each ~10s");
+    RemoteSerial::println("[cal]   (mag and sys are ignored in IMUPLUS — stay at 0 forever)");
 
     uint32_t last_print = 0;
     while (!g_imu.isCalibrated()) {
@@ -145,7 +168,7 @@ void waitForCalibration() {
 
         delay(CAL_POLL_PERIOD_MS);
     }
-    RemoteSerial::println("[cal] fully calibrated — arming teleop.");
+    RemoteSerial::println("[cal] fully calibrated — offsets saved, arming teleop.");
 }
 
 void controlTask(void* /*arg*/) {
@@ -178,13 +201,15 @@ void controlTask(void* /*arg*/) {
         // 2) Arming-edge dispatch. Runs BEFORE the staleness ramp so the
         //    Armed-edge zeroing of last_known prevents a stale-replay on the
         //    first armed tick.
-        //      Disarmed->Armed: seed last_fresh_ms / mark have_seen_fresh
-        //                       (B4: STALE_DISARM_MS backstop fires even if
-        //                        the operator never sends velocity) and clear
-        //                       last_known so the ramp can't replay a prior
-        //                       cycle's command.
-        //      Armed->Disarmed: clear PID windup so re-arm doesn't slam
-        //                       wheels. (B3)
+        //      Disarmed->Armed: seed last_fresh_ms so the velocity ramp
+        //                       starts coherent on the first armed tick,
+        //                       mark have_seen_fresh, clear last_known so
+        //                       the ramp can't replay a prior cycle's
+        //                       command. Then controller->onArmed() clears
+        //                       wheel-level + balance PID state that drifted
+        //                       while update(dt) ran during Disarmed.
+        //      Armed->Disarmed: onDisarmed() clears wheel-level + balance
+        //                       PID state so re-arm doesn't slam wheels (B3).
         //      *->Killed:       single hard brake on entry; subsequent ticks
         //                       are no-ops (avoids re-clearing _inFault every
         //                       tick which would defeat the Schmitt gate).
@@ -194,9 +219,10 @@ void controlTask(void* /*arg*/) {
                 last_fresh_ms   = now;
                 have_seen_fresh = true;
                 last_known      = BodyVelocity{0.0f, 0.0f, 0.0f};
+                g_controller->onArmed();
             } else if (prev_arming == ArmingState::State::Armed &&
                        arming      == ArmingState::State::Disarmed) {
-                g_controller->resetIntegrators();
+                g_controller->onDisarmed();
             } else if (arming == ArmingState::State::Killed) {
                 g_controller->stop();
             }
@@ -218,27 +244,18 @@ void controlTask(void* /*arg*/) {
         }
 
         // 4) Arming-gated dispatch. Killed brakes immediately (edge already
-        //    called stop() once); Armed runs the controller and trips the
-        //    long-term auto-disarm; Disarmed hard-zeros and lets the per-wheel
-        //    PIDs hold motors at zero. OTA composes by driving
-        //    ArmingState::disarm() from OtaSafeMode::onStart().
+        //    called stop() once); Armed runs the controller against the
+        //    (possibly ramped-to-zero) drive_cmd; Disarmed hard-zeros and
+        //    lets the per-wheel PIDs hold motors at zero. OTA composes by
+        //    driving ArmingState::disarm() from OtaSafeMode::onStart().
+        //    Short-term producer silence (>200ms) ramps drive_cmd to zero
+        //    via STALENESS_TIMEOUT_MS in step 3; the controller stays armed.
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
         if (arming == ArmingState::State::Killed) {
             drive_cmd = {0.0f, 0.0f, 0.0f};
         } else if (arming == ArmingState::State::Armed) {
-            // B4: the auto-disarm backstop must fire even if the operator
-            // armed but never sent a velocity frame, so the `have_seen_fresh`
-            // guard is dropped here. The Armed edge seeds last_fresh_ms = now
-            // above, so this comparison is well-defined from the moment we
-            // enter Armed.
-            if ((now - last_fresh_ms) > STALE_DISARM_MS) {
-                ArmingState::disarm();
-                drive_cmd = {0.0f, 0.0f, 0.0f};
-                g_drivetrain.drive(drive_cmd);
-            } else {
-                IMUReading imu_reading = g_imu.read();
-                g_controller->update(drive_cmd, imu_reading, dt);
-            }
+            IMUReading imu_reading = g_imu.read();
+            g_controller->update(drive_cmd, imu_reading, dt);
         } else {
             drive_cmd = {0.0f, 0.0f, 0.0f};
             g_drivetrain.drive(drive_cmd);
@@ -297,6 +314,8 @@ void setup() {
         RemoteSerial::println("[balance] no persisted config; using defaults");
     }
     g_tuner.begin(boot_cfg);
+    BalanceHttpApi::registerRoutes(RemoteSerial::server(), g_tuner);
+    ArmingHttpApi::registerRoutes(RemoteSerial::server());
     g_controller = new BalancingDrivetrainController(g_drivetrain, g_imu, g_tuner.slot());
 
     // Gate: no producer, no control task, no PWM until the IMU is fully

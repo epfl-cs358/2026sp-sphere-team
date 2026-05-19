@@ -32,6 +32,9 @@
 #include "BalanceConfig.h"
 #include "BalanceConfigStorage.h"
 #include "ArmingState.h"
+#include "BalanceHttpApi.h"
+#include "ArmingHttpApi.h"
+#include "RemoteSerial.h"
 
 #include "BringUp.h"
 OTA_SAFE_MODE_FOR("bb8-balance-test");
@@ -39,7 +42,6 @@ OTA_SAFE_MODE_FOR("bb8-balance-test");
 namespace {
 
 using RobotConstants::STALENESS_TIMEOUT_MS;
-using RobotConstants::STALE_DISARM_MS;
 using RobotConstants::CONTROL_PERIOD_MS;
 
 constexpr uint32_t TWDT_TIMEOUT_S           = 1;     // tighter than Arduino default ~5s
@@ -127,19 +129,18 @@ void handleLine(const String& line) {
         return;
     }
 
+    // arm/disarm/kill produce no echo here — ArmingState::* logs the
+    // transition itself via arming_log(), so a second print would duplicate.
     if (trimmed == "arm") {
         ArmingState::arm();
-        RemoteSerial::println("[arming] Armed");
         return;
     }
     if (trimmed == "disarm") {
         ArmingState::disarm();
-        RemoteSerial::println("[arming] Disarmed");
         return;
     }
     if (trimmed == "kill") {
         ArmingState::kill();
-        RemoteSerial::println("[arming] Killed");
         return;
     }
     if (trimmed == "clearkill") {
@@ -157,15 +158,26 @@ void handleLine(const String& line) {
     g_tuner.handle(trimmed);
 }
 
-// Block until the BNO055 reports full calibration on all four subsystems.
+// Block until the BNO055 is calibrated enough to fuse a stable orientation.
 // Control task is deliberately left un-started by the caller so no PWM is
 // written while we wait. OtaSafeMode must be up first so the robot stays
-// reflashable while gated here.
+// reflashable while gated here. See main_robot.cpp for full discussion of
+// the IMUPLUS warm-/cold-boot split.
 void waitForCalibration() {
-    RemoteSerial::println("[cal] waiting for BNO055 full calibration before arming.");
+    if (g_imu.wasRestored()) {
+        RemoteSerial::println("[cal] warm boot — waiting for gyro to settle.");
+        while (g_imu.read().calibration.gyro < 3) {
+            BringUp::tick();
+            delay(CAL_POLL_PERIOD_MS);
+        }
+        RemoteSerial::println("[cal] gyro settled — arming teleop.");
+        return;
+    }
+
+    RemoteSerial::println("[cal] cold boot — full IMUPLUS calibration required.");
     RemoteSerial::println("[cal]   gyro:  hold still");
-    RemoteSerial::println("[cal]   accel: 6 distinct orientations, hold each ~2s");
-    RemoteSerial::println("[cal]   mag:   slow figure-8 in the air");
+    RemoteSerial::println("[cal]   accel: 6 distinct stable orientations, hold each ~10s");
+    RemoteSerial::println("[cal]   (mag and sys are ignored in IMUPLUS — stay at 0 forever)");
 
     uint32_t last_print = 0;
     while (!g_imu.isCalibrated()) {
@@ -183,7 +195,7 @@ void waitForCalibration() {
 
         delay(CAL_POLL_PERIOD_MS);
     }
-    RemoteSerial::println("[cal] fully calibrated — arming teleop.");
+    RemoteSerial::println("[cal] fully calibrated — offsets saved, arming teleop.");
 }
 
 void controlTask(void* /*arg*/) {
@@ -192,6 +204,7 @@ void controlTask(void* /*arg*/) {
     BodyVelocity last_known{};
     uint32_t     last_fresh_ms = 0;
     bool         have_seen_fresh = false;
+    ArmingState::State prev_arming = ArmingState::get();
 
     TickType_t lastWake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(CONTROL_PERIOD_MS);
@@ -208,6 +221,24 @@ void controlTask(void* /*arg*/) {
             have_seen_fresh = true;
         }
 
+        // Arming-edge dispatch — mirrors main_robot.cpp. Disarmed→Armed and
+        // Armed→Disarmed clear wheel-level + balance PID state that drifted
+        // while update(dt) ran unarmed; entry to Killed brakes once.
+        const auto arming = ArmingState::get();
+        if (arming != prev_arming) {
+            if (arming == ArmingState::State::Armed) {
+                last_fresh_ms   = now;
+                have_seen_fresh = true;
+                last_known      = BodyVelocity{0.0f, 0.0f, 0.0f};
+                g_controller->onArmed();
+            } else if (prev_arming == ArmingState::State::Armed &&
+                       arming      == ArmingState::State::Disarmed) {
+                g_controller->onDisarmed();
+            } else if (arming == ArmingState::State::Killed) {
+                g_controller->stop();
+            }
+        }
+
         BodyVelocity drive_cmd{0.0f, 0.0f, 0.0f};
         if (have_seen_fresh) {
             const uint32_t age = now - last_fresh_ms;
@@ -221,24 +252,18 @@ void controlTask(void* /*arg*/) {
         }
 
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
-        const auto arming = ArmingState::get();
         if (arming == ArmingState::State::Killed) {
-            g_controller->stop();
             drive_cmd = {0.0f, 0.0f, 0.0f};
         } else if (arming == ArmingState::State::Armed) {
-            if (have_seen_fresh && (now - last_fresh_ms) > STALE_DISARM_MS) {
-                ArmingState::disarm();
-                drive_cmd = {0.0f, 0.0f, 0.0f};
-                g_drivetrain.drive(drive_cmd);
-            } else {
-                IMUReading imu_reading = g_imu.read();
-                g_controller->update(drive_cmd, imu_reading, dt);
-            }
+            IMUReading imu_reading = g_imu.read();
+            g_controller->update(drive_cmd, imu_reading, dt);
         } else {
             drive_cmd = {0.0f, 0.0f, 0.0f};
             g_drivetrain.drive(drive_cmd);
         }
         g_drivetrain.update(dt);
+
+        prev_arming = arming;
 
         esp_task_wdt_reset();
 
@@ -287,6 +312,8 @@ void setup() {
         RemoteSerial::println("[balance] loaded persisted config from NVS");
     }
     g_tuner.begin(boot_cfg);
+    BalanceHttpApi::registerRoutes(RemoteSerial::server(), g_tuner);
+    ArmingHttpApi::registerRoutes(RemoteSerial::server());
     g_controller = new BalancingDrivetrainController(g_drivetrain, g_imu, g_tuner.slot());
 
     // Gate: no control task, no PWM until the IMU is fully calibrated.

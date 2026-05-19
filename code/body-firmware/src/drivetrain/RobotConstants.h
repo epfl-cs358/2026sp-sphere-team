@@ -14,7 +14,6 @@ constexpr float MAX_RPM       = 251.0f;
 
 // Teleop control-loop timing.
 constexpr uint32_t STALENESS_TIMEOUT_MS = 200;   // ramp-to-zero window on silence
-constexpr uint32_t STALE_DISARM_MS      = 2000;  // long-term auto-disarm backstop
 constexpr uint32_t CONTROL_PERIOD_MS    = 10;    // 100 Hz tick
 
 inline DrivetrainConfig drivetrainConfig() {
@@ -36,6 +35,8 @@ inline BalanceConfig balanceConfig() {
         .maxTiltSetpoint   = 0.35f,   // ~20°; leaves ample headroom below 60° fault envelope
         .pitchKp = 1.50f, .pitchKi = 0.0f, .pitchKd = 0.15f,
         .rollKp  = 1.50f, .rollKi  = 0.0f, .rollKd  = 0.15f,
+        .pitchDeadband     = 0.0f,    // rad; off by default, raise to kill limit cycle at rest
+        .rollDeadband      = 0.0f,
         .maxOutputVelocity = 1.00f,   // m/s; just below physical max (~1.05)
         .envelopeEnterSin  = 0.866f,  // sin(60°)
         .envelopeExitSin   = 0.819f,  // sin(55°)
