@@ -63,8 +63,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.quat_x    = imuData.orientation.x;
     _lastTelemetry.quat_y    = imuData.orientation.y;
     _lastTelemetry.quat_z    = imuData.orientation.z;
-    // IMUReading exposes `linearAccel` (gravity-removed) — telemetry treats it
-    // as accel_*. Plain `accel` doesn't exist on this firmware's IMU read path.
+    // gravity-removed; raw accel would duplicate info in the quaternion.
     _lastTelemetry.accel_x   = imuData.linearAccel.x;
     _lastTelemetry.accel_y   = imuData.linearAccel.y;
     _lastTelemetry.accel_z   = imuData.linearAccel.z;
