@@ -27,10 +27,12 @@ public:
     }
     void update(float /*dt*/) override {}
     void stop() override { stopCallCount++; }
+    void resetPids() override { resetPidsCallCount++; }
 
     BodyVelocity lastDrive{};
     int driveCallCount = 0;
     int stopCallCount = 0;
+    int resetPidsCallCount = 0;
 
 private:
     MockMotor _m0, _m1, _m2;
@@ -136,28 +138,40 @@ void test_zero_command_level_platform_emits_zero() {
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.0f, drivetrain->lastDrive.omega);
 }
 
-void test_zero_command_pitched_forward_drives_backward() {
+void test_zero_command_pitched_forward_drives_shell_backward() {
+    // Sphere B1 convention: pitched forward (gx > 0) → controller commands
+    // shell to roll BACKWARD to push the payload back over its base.
+    // Post-kinematics-fix, shell-backward corresponds to vx_out > 0 emitted
+    // to the drivetrain (kinematics maps +vx_out → shell forward; controller
+    // negates output so payload-forward-tilt → wheel command rolls payload back).
     BodyVelocity cmd{0.0f, 0.0f, 0.0f};
     float tilt = 10.0f * 3.14159265f / 180.0f;
     IMUReading imuData = makeIMU(pitchedForward(tilt));
     controller->update(cmd, imuData, 0.01f);
 
     TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
-    TEST_ASSERT_TRUE(drivetrain->lastDrive.vx < 0.0f);
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.vx > 0.0f);
 }
 
-void test_zero_command_rolled_left_drives_right() {
-    // "Drives right" means vy_out < 0 (vy positive = left in BodyVelocity).
+void test_zero_command_rolled_left_drives_shell_right() {
+    // Mirror of pitch: rolled left (gy > 0) → command rolls shell RIGHT to
+    // push payload back to vertical. Post-fix, vy_out > 0.
     BodyVelocity cmd{0.0f, 0.0f, 0.0f};
     float tilt = 10.0f * 3.14159265f / 180.0f;
     IMUReading imuData = makeIMU(rolledLeft(tilt));
     controller->update(cmd, imuData, 0.01f);
 
     TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
-    TEST_ASSERT_TRUE(drivetrain->lastDrive.vy < 0.0f);
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.vy > 0.0f);
 }
 
-void test_forward_command_level_emits_forward_vx_only() {
+void test_forward_command_level_emits_negative_vx() {
+    // Operator commands +vx (forward) on level platform: pitch_target > 0
+    // (lean forward), pitch_actual = 0, error > 0. Under the sphere B1
+    // convention the controller negates its output, so vx_out < 0 — wheels
+    // are commanded to push the SHELL backward (which tips the payload
+    // forward, initiating the desired forward translation). Steady-state
+    // would equilibrate at the leaned-forward angle with output ≈ 0.
     BodyVelocity cmd{0.5f, 0.0f, 0.0f};
     IMUReading imuData = makeIMU(upright());
 
@@ -166,7 +180,7 @@ void test_forward_command_level_emits_forward_vx_only() {
         controller->update(cmd, imuData, 0.01f);
     }
 
-    TEST_ASSERT_TRUE(drivetrain->lastDrive.vx > 0.0f);
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.vx < 0.0f);
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.0f, drivetrain->lastDrive.vy);
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.0f, drivetrain->lastDrive.omega);
 }
@@ -249,8 +263,10 @@ void test_output_clamp_at_max_velocity() {
     IMUReading level = makeIMU(upright());
     controller->update(cmd, level, 0.01f);
 
+    // After controller-output negation (B1 sphere convention) saturated
+    // positive PID output appears as -maxOutputVelocity at the drive() call.
     TEST_ASSERT_TRUE(std::fabs(drivetrain->lastDrive.vx) <= 1.0f + 1e-6f);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.0f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, -1.0f, drivetrain->lastDrive.vx);
 }
 
 // Baseline pin: stop() has THREE observable effects — clears PIDs, calls
@@ -336,6 +352,66 @@ void test_resetIntegrators_preserves_fault_latch() {
     TEST_ASSERT_TRUE(controller->_faultForTest());
 }
 
+// onArmed() is the Disarmed→Armed edge hook. Must reset the wheel-level
+// drivetrain PIDs (so D-spike from stale _prevMeasurement can't kick on the
+// first armed tick) AND the balance PIDs (defensive; setGains during
+// Disarmed could otherwise leave them in a state we'd rather not enter armed
+// from). Must NOT call drivetrain.stop() — that would brake motors.
+void test_onArmed_resets_drivetrain_pids_and_balance_integrators() {
+    BalanceConfig hot = makeTestConfig();
+    hot.pitchKi = 1.0f;
+    hot.rollKi  = 1.0f;
+    *cfgBuf = hot;
+
+    // Wind up the balance integrators with a non-zero command on level.
+    BodyVelocity cmd{0.5f, 0.5f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    for (int i = 0; i < 5; ++i) {
+        controller->update(cmd, level, 0.01f);
+    }
+
+    int stopCountBefore = drivetrain->stopCallCount;
+    controller->onArmed();
+
+    // Wheel PIDs reset, no brake.
+    TEST_ASSERT_EQUAL(1, drivetrain->resetPidsCallCount);
+    TEST_ASSERT_EQUAL(stopCountBefore, drivetrain->stopCallCount);
+
+    // Balance integrators reset — zero command on level produces ~0 output.
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    controller->update(zero, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
+}
+
+// onDisarmed() is the Armed→Disarmed edge hook. Same semantics as the old
+// resetIntegrators() call site PLUS a wheel-PID reset so the next Disarmed
+// period starts with clean inner state.
+void test_onDisarmed_resets_balance_and_drivetrain_pids() {
+    BalanceConfig hot = makeTestConfig();
+    hot.pitchKi = 1.0f;
+    hot.rollKi  = 1.0f;
+    *cfgBuf = hot;
+
+    BodyVelocity cmd{0.5f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    for (int i = 0; i < 5; ++i) {
+        controller->update(cmd, level, 0.01f);
+    }
+    TEST_ASSERT_TRUE(std::fabs(drivetrain->lastDrive.vx) > 0.0f);
+
+    int stopCountBefore = drivetrain->stopCallCount;
+    controller->onDisarmed();
+
+    TEST_ASSERT_EQUAL(1, drivetrain->resetPidsCallCount);
+    TEST_ASSERT_EQUAL(stopCountBefore, drivetrain->stopCallCount);
+
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    controller->update(zero, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
+}
+
 void test_stop_resets_pid_state_and_calls_drivetrain_stop() {
     // Warm-up with Ki > 0 so an integral builds up.
     BalanceConfig hot = makeTestConfig();
@@ -362,9 +438,9 @@ void test_stop_resets_pid_state_and_calls_drivetrain_stop() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_command_level_platform_emits_zero);
-    RUN_TEST(test_zero_command_pitched_forward_drives_backward);
-    RUN_TEST(test_zero_command_rolled_left_drives_right);
-    RUN_TEST(test_forward_command_level_emits_forward_vx_only);
+    RUN_TEST(test_zero_command_pitched_forward_drives_shell_backward);
+    RUN_TEST(test_zero_command_rolled_left_drives_shell_right);
+    RUN_TEST(test_forward_command_level_emits_negative_vx);
     RUN_TEST(test_forward_command_at_target_tilt_settles_to_zero);
     RUN_TEST(test_enter_fault_above_enter_envelope);
     RUN_TEST(test_in_fault_between_thresholds_stays_in_fault);
@@ -373,6 +449,8 @@ int main() {
     RUN_TEST(test_stop_clears_pids_calls_drivetrain_stop_and_clears_fault_latch);
     RUN_TEST(test_resetIntegrators_clears_pid_state_without_stopping_drive);
     RUN_TEST(test_resetIntegrators_preserves_fault_latch);
+    RUN_TEST(test_onArmed_resets_drivetrain_pids_and_balance_integrators);
+    RUN_TEST(test_onDisarmed_resets_balance_and_drivetrain_pids);
     RUN_TEST(test_stop_resets_pid_state_and_calls_drivetrain_stop);
     return UNITY_END();
 }

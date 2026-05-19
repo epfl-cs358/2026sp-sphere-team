@@ -23,6 +23,8 @@ public:
                 const IMUReading& imuData,
                 float dt) override;
     void stop() override;
+    void onArmed() override;
+    void onDisarmed() override;
     void resetIntegrators();
 
 #ifdef BB8_TEST_HOOKS

@@ -44,6 +44,8 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     // mutation; cost is negligible vs. allowing tuner edits to take effect.
     _pitchPid.setGains(cfg.pitchKp, cfg.pitchKi, cfg.pitchKd);
     _rollPid.setGains(cfg.rollKp, cfg.rollKi, cfg.rollKd);
+    _pitchPid.setDeadband(cfg.pitchDeadband);
+    _rollPid.setDeadband(cfg.rollDeadband);
 
     float gx, gy, gz;
     quatToBodyGravity(imuData.orientation, gx, gy, gz);
@@ -84,7 +86,18 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     vx_out = clampf(vx_out, -cfg.maxOutputVelocity, +cfg.maxOutputVelocity);
     vy_out = clampf(vy_out, -cfg.maxOutputVelocity, +cfg.maxOutputVelocity);
 
-    _drivetrain.drive(BodyVelocity{vx_out, vy_out, cmd.omega});
+    // Sphere sign convention (B1, resolved): for BB-8's internal drive,
+    // tilting the body forward (pitch > 0) requires the shell to roll
+    // BACKWARD to push the payload back over its base. Standard PID gives
+    // `vx_out = Kp * (target - actual)`, which is positive-feedback under
+    // the REP-103-clean kinematics. Negate at the boundary so positive Kp
+    // gains in BalanceConfig remain physically intuitive ("how hard does
+    // the controller push back against tilt") rather than forcing operators
+    // to set negative gains (which BalanceTuner rejects). Prior to the
+    // OmniKinematics.h vx sign fix this negation lived implicitly in the
+    // kinematics — the two cancelled and the controller looked right by
+    // coincidence.
+    _drivetrain.drive(BodyVelocity{-vx_out, -vy_out, cmd.omega});
 }
 
 void BalancingDrivetrainController::stop() {
@@ -97,4 +110,25 @@ void BalancingDrivetrainController::stop() {
 void BalancingDrivetrainController::resetIntegrators() {
     _pitchPid.reset();
     _rollPid.reset();
+}
+
+// Disarmed→Armed edge. Wheel PIDs accumulated _prevMeasurement and _integral
+// while update(dt) ran during Disarmed (chasing target=0 against real encoder
+// readings). Clear them so the first armed tick computes outputs cleanly.
+// Resetting the balance PIDs too is defensive — they should already be clean
+// from the prior Armed→Disarmed edge, but a setGains tuning edit mid-Disarmed
+// could leave them in a state we'd rather not start armed from.
+void BalancingDrivetrainController::onArmed() {
+    _drivetrain.resetPids();
+    _pitchPid.reset();
+    _rollPid.reset();
+}
+
+// Armed→Disarmed edge. Mirrors onArmed so wheel PIDs don't carry I/D state
+// into the next Disarmed period either. Subsumes the old resetIntegrators()
+// call site in the main loop.
+void BalancingDrivetrainController::onDisarmed() {
+    _pitchPid.reset();
+    _rollPid.reset();
+    _drivetrain.resetPids();
 }
