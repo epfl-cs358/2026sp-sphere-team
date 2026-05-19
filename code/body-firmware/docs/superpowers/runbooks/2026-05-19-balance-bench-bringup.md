@@ -18,7 +18,7 @@ Before flashing this branch:
 
    ```sh
    git checkout <previous-sha>
-   pio run -e bb8-robot -t upload
+   pio run -e robot_ota -t upload
    ```
 
    - SoftAP visible from laptop: `[   ]`
@@ -31,7 +31,7 @@ If either prerequisite fails, fix it before flashing — do not proceed without 
 
 | # | Action | Expected | Observed |
 |---|--------|----------|----------|
-| 1 | `pio run -e bb8-robot -t upload` (OTA) | Console: `BB-8 main_robot starting.` and `[arming] boot state: Disarmed` | `[   ]` |
+| 1 | `pio run -e robot_ota -t upload` | Console: `BB-8 main_robot starting.` and `[arming] boot state: Disarmed` | `[   ]` |
 | 2 | Open WebSerial at `http://bb8-robot.local:81/webserial`; send `armstate` | `[arming] Disarmed` | `[   ]` |
 | 3 | While WebSerial is still connected, kick a second OTA upload | `[ota] update starting` and `[arming] Disarmed` (no-op since already disarmed — confirms the OTA→disarm hook is wired) | `[   ]` |
 | 4a | Send `arm` | `[arming] Armed` | `[   ]` |
@@ -76,7 +76,7 @@ Record the decision (no flip / flip pitch / flip roll / flip both) in the **Find
 Purpose: bench data that resolves **B7** (kinematics L/R question). The teleop pages, firmware kinematics, and IMU all agree on `+vy = LEFT, +ω = CCW` REP-103 on paper; physical observation needed.
 
 ```
-pio run -e drivetrain_test -t upload
+pio run -e drivetrain_test_ota -t upload
 ```
 
 Connect WebSerial. Each row sends a body-frame velocity command `vx vy omega`.
@@ -92,14 +92,14 @@ Record any disagreements in the **Findings** section — they feed the follow-up
 
 ---
 
-## Phase D — producer-silence backstop + re-arm windup (`bb8-robot` env)
+## Phase D — producer-silence backstop + re-arm windup (`robot_ota` env)
 
 **REQUIRED**: robot **ON THE GROUND** (or under wheel load — e.g. shell mass on the platform). Windup-jolt (B3) is invisible on free-spinning wheels. The producer-silence backstop (B4) is observable either way, but co-locate them here to amortize the setup.
 
 **ALSO REQUIRED**: before doing anything else in this phase, open a **second browser window** at `http://bb8-robot.local:81/webserial`. The `armstate` query relies on WebSerial; if you only have the webapp tab open and close it, you lose the channel needed to verify the post-tab-close state.
 
 ```
-pio run -e bb8-robot -t upload
+pio run -e robot_ota -t upload
 ```
 
 | # | Action | Expected | Observed |
