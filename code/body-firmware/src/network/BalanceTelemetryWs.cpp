@@ -85,9 +85,6 @@ std::deque<BalanceTelemetry> g_nativeQueue;
 #endif
 
 int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
-    // TODO(wave4): wire gyro_pitch_sign / gyro_roll_sign once the telemetry
-    // struct carries them. Until then emit literal 0,0 to preserve column
-    // positions for the canonical parser.
     return std::snprintf(
         buf, buflen,
         "%u,%u,%g,%g,"
@@ -114,7 +111,7 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         "%g,%g,"
         "%g,"
         "%g,%g,"
-        "0,0,"
+        "%g,%g,"
         "%g,%g,"
         "%u,%u,%u,"
         "%u",
@@ -216,6 +213,9 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
 
         static_cast<double>(t.envelope_enter_sin),
         static_cast<double>(t.envelope_exit_sin),
+
+        static_cast<double>(t.gyro_pitch_sign),
+        static_cast<double>(t.gyro_roll_sign),
 
         static_cast<double>(t.tilt_per_velocity),
         static_cast<double>(t.max_tilt_setpoint),

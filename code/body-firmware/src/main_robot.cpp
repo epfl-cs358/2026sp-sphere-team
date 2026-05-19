@@ -317,6 +317,8 @@ void controlTask(void* /*arg*/) {
             t.max_output_velocity = snap.maxOutputVelocity;
             t.envelope_enter_sin  = snap.envelopeEnterSin;
             t.envelope_exit_sin   = snap.envelopeExitSin;
+            t.gyro_pitch_sign     = snap.gyroPitchSign;
+            t.gyro_roll_sign      = snap.gyroRollSign;
             t.tilt_per_velocity   = snap.tiltPerVelocity;
             t.max_tilt_setpoint   = snap.maxTiltSetpoint;
         }

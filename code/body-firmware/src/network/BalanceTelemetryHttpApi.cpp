@@ -171,8 +171,8 @@ constexpr Column kSchema[] = {
     {"max_output_velocity", "float",  "m/s",       "PID output clamp magnitude"},
     {"envelope_enter_sin",  "float",  "",          "fault enter threshold"},
     {"envelope_exit_sin",   "float",  "",          "fault exit threshold"},
-    {"gyro_pitch_sign",     "int8",   "",          "+1/-1 gyro pitch sign"},
-    {"gyro_roll_sign",      "int8",   "",          "+1/-1 gyro roll sign"},
+    {"gyro_pitch_sign",     "float",  "",          "+1/-1 gyro pitch sign"},
+    {"gyro_roll_sign",      "float",  "",          "+1/-1 gyro roll sign"},
     {"tilt_per_velocity",   "float",  "rad/(m/s)", "tilt request per velocity"},
     {"max_tilt_setpoint",   "float",  "rad",       "max abs tilt target"},
     {"armed_state",         "uint8",  "",          "0=Disarmed 1=Armed 2=Killed"},
@@ -249,8 +249,7 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         "\"pitch_deadband\":%g,\"roll_deadband\":%g,"
         "\"max_output_velocity\":%g,"
         "\"envelope_enter_sin\":%g,\"envelope_exit_sin\":%g,"
-        // gyro_*_sign placeholders match BalanceTelemetryWs CSV emission.
-        "\"gyro_pitch_sign\":0,\"gyro_roll_sign\":0,"
+        "\"gyro_pitch_sign\":%g,\"gyro_roll_sign\":%g,"
         "\"tilt_per_velocity\":%g,\"max_tilt_setpoint\":%g,"
         "\"armed_state\":%u,\"in_fault\":%u,\"cmd_stale\":%u,"
         "\"event_flags\":%u"
@@ -353,6 +352,9 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
 
         static_cast<double>(t.envelope_enter_sin),
         static_cast<double>(t.envelope_exit_sin),
+
+        static_cast<double>(t.gyro_pitch_sign),
+        static_cast<double>(t.gyro_roll_sign),
 
         static_cast<double>(t.tilt_per_velocity),
         static_cast<double>(t.max_tilt_setpoint),

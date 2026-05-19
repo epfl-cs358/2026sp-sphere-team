@@ -84,6 +84,7 @@ struct BalanceTelemetry {
     float    pitch_deadband, roll_deadband;
     float    max_output_velocity;
     float    envelope_enter_sin, envelope_exit_sin;
+    float    gyro_pitch_sign, gyro_roll_sign;
     float    tilt_per_velocity, max_tilt_setpoint;
 
     // --- state flags ---

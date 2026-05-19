@@ -82,6 +82,8 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.max_output_velocity = cfg.maxOutputVelocity;
     _lastTelemetry.envelope_enter_sin  = cfg.envelopeEnterSin;
     _lastTelemetry.envelope_exit_sin   = cfg.envelopeExitSin;
+    _lastTelemetry.gyro_pitch_sign     = cfg.gyroPitchSign;
+    _lastTelemetry.gyro_roll_sign      = cfg.gyroRollSign;
     _lastTelemetry.tilt_per_velocity   = cfg.tiltPerVelocity;
     _lastTelemetry.max_tilt_setpoint   = cfg.maxTiltSetpoint;
 
