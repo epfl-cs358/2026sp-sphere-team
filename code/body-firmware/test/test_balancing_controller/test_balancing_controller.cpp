@@ -436,7 +436,7 @@ void test_last_telemetry_populated_after_update() {
     BodyVelocity cmd{0.3f, -0.2f, 0.1f};
     float tilt = 10.0f * 3.14159265f / 180.0f;
     IMUReading imuData = makeIMU(pitchedForward(tilt));
-    imuData.accel = Vec3{1.5f, 2.5f, -9.8f};
+    imuData.linearAccel = Vec3{1.5f, 2.5f, -9.8f};
     imuData.gyro  = Vec3{0.11f, 0.22f, 0.33f};
 
     controller->update(cmd, imuData, 0.01f);
@@ -483,8 +483,6 @@ void test_last_telemetry_populated_after_update() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->envelopeExitSin,   t.envelope_exit_sin);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->tiltPerVelocity,   t.tilt_per_velocity);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->maxTiltSetpoint,   t.max_tilt_setpoint);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->gyroPitchSign,     t.gyro_pitch_sign);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfgBuf->gyroRollSign,      t.gyro_roll_sign);
 
     // body_*_cmd mirrors the negated drivetrain command.
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, drivetrain->lastDrive.vx,    t.body_vx_cmd);

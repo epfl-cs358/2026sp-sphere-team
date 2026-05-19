@@ -6,6 +6,7 @@
 
 #include <cmath>
 
+#include "BalanceTuner.h"
 #include "quatToBodyGravity.h"
 
 namespace {
@@ -47,9 +48,50 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _pitchPid.setDeadband(cfg.pitchDeadband);
     _rollPid.setDeadband(cfg.rollDeadband);
 
+    // Telemetry is rebuilt every tick. Fields untouched here (wheel_*, seq,
+    // t_us, dt_measured, cmd_age_ms, armed_state, cmd_stale) are owned by the
+    // control task and overwritten before publishing.
+    _lastTelemetry = BalanceTelemetry{};
+    _lastTelemetry.dt_used = dt;
+    _lastTelemetry.cmd_vx        = cmd.vx;
+    _lastTelemetry.cmd_vy        = cmd.vy;
+    _lastTelemetry.cmd_omega     = cmd.omega;
+    _lastTelemetry.cmd_vx_raw    = cmd.vx;
+    _lastTelemetry.cmd_vy_raw    = cmd.vy;
+    _lastTelemetry.cmd_omega_raw = cmd.omega;
+    _lastTelemetry.quat_w    = imuData.orientation.w;
+    _lastTelemetry.quat_x    = imuData.orientation.x;
+    _lastTelemetry.quat_y    = imuData.orientation.y;
+    _lastTelemetry.quat_z    = imuData.orientation.z;
+    // IMUReading exposes `linearAccel` (gravity-removed) — telemetry treats it
+    // as accel_*. Plain `accel` doesn't exist on this firmware's IMU read path.
+    _lastTelemetry.accel_x   = imuData.linearAccel.x;
+    _lastTelemetry.accel_y   = imuData.linearAccel.y;
+    _lastTelemetry.accel_z   = imuData.linearAccel.z;
+    _lastTelemetry.gyro_x_raw = imuData.gyro.x;
+    _lastTelemetry.gyro_y_raw = imuData.gyro.y;
+    _lastTelemetry.gyro_z_raw = imuData.gyro.z;
+    _lastTelemetry.pitch_Kp = cfg.pitchKp;
+    _lastTelemetry.pitch_Ki = cfg.pitchKi;
+    _lastTelemetry.pitch_Kd = cfg.pitchKd;
+    _lastTelemetry.roll_Kp  = cfg.rollKp;
+    _lastTelemetry.roll_Ki  = cfg.rollKi;
+    _lastTelemetry.roll_Kd  = cfg.rollKd;
+    _lastTelemetry.pitch_deadband      = cfg.pitchDeadband;
+    _lastTelemetry.roll_deadband       = cfg.rollDeadband;
+    _lastTelemetry.max_output_velocity = cfg.maxOutputVelocity;
+    _lastTelemetry.envelope_enter_sin  = cfg.envelopeEnterSin;
+    _lastTelemetry.envelope_exit_sin   = cfg.envelopeExitSin;
+    _lastTelemetry.tilt_per_velocity   = cfg.tiltPerVelocity;
+    _lastTelemetry.max_tilt_setpoint   = cfg.maxTiltSetpoint;
+
     float gx, gy, gz;
     quatToBodyGravity(imuData.orientation, gx, gy, gz);
     float tiltMagSin = std::sqrt(gx * gx + gy * gy);
+    _lastTelemetry.gx = gx;
+    _lastTelemetry.gy = gy;
+    _lastTelemetry.gz = gz;
+    _lastTelemetry.tilt_mag_sin = tiltMagSin;
 
     // Schmitt fault gate. On entry, reset both balance PIDs so windup from
     // before the fault doesn't kick the wheels when the controller re-engages.
@@ -63,6 +105,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
             _inFault = false;
         } else {
             _drivetrain.drive(BodyVelocity{0.0f, 0.0f, 0.0f});
+            _finalizeTelemetry();
             return;
         }
     }
@@ -78,13 +121,33 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     float gyro_pitch_rate = cfg.gyroPitchSign * imuData.gyro.y;
     float gyro_roll_rate  = cfg.gyroRollSign  * imuData.gyro.x;
 
+    _lastTelemetry.pitch_target    = pitch_target;
+    _lastTelemetry.roll_target     = roll_target;
+    _lastTelemetry.pitch_actual    = pitch_actual;
+    _lastTelemetry.roll_actual     = roll_actual;
+    _lastTelemetry.gyro_pitch_rate = gyro_pitch_rate;
+    _lastTelemetry.gyro_roll_rate  = gyro_roll_rate;
+
     float vx_out = _pitchPid.compute(pitch_target, pitch_actual, gyro_pitch_rate, dt);
     float vy_out = _rollPid.compute(roll_target,  roll_actual,  gyro_roll_rate,  dt);
+
+    _lastTelemetry.pitch_err     = _pitchPid.lastError();
+    _lastTelemetry.pitch_P       = _pitchPid.lastP();
+    _lastTelemetry.pitch_I       = _pitchPid.lastI();
+    _lastTelemetry.pitch_D       = _pitchPid.lastD();
+    _lastTelemetry.pitch_out_raw = _pitchPid.lastOutput();
+    _lastTelemetry.roll_err      = _rollPid.lastError();
+    _lastTelemetry.roll_P        = _rollPid.lastP();
+    _lastTelemetry.roll_I        = _rollPid.lastI();
+    _lastTelemetry.roll_D        = _rollPid.lastD();
+    _lastTelemetry.roll_out_raw  = _rollPid.lastOutput();
 
     // Explicit clamp after PID; redundant with the PID's own clamp but the
     // spec algorithm calls for it as a safety net against gain glitches.
     vx_out = clampf(vx_out, -cfg.maxOutputVelocity, +cfg.maxOutputVelocity);
     vy_out = clampf(vy_out, -cfg.maxOutputVelocity, +cfg.maxOutputVelocity);
+    _lastTelemetry.pitch_out = vx_out;
+    _lastTelemetry.roll_out  = vy_out;
 
     // Sphere sign convention (B1, resolved): for BB-8's internal drive,
     // tilting the body forward (pitch > 0) requires the shell to roll
@@ -97,7 +160,31 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     // OmniKinematics.h vx sign fix this negation lived implicitly in the
     // kinematics — the two cancelled and the controller looked right by
     // coincidence.
+    _lastTelemetry.body_vx_cmd    = -vx_out;
+    _lastTelemetry.body_vy_cmd    = -vy_out;
+    _lastTelemetry.body_omega_cmd = cmd.omega;
     _drivetrain.drive(BodyVelocity{-vx_out, -vy_out, cmd.omega});
+    _finalizeTelemetry();
+}
+
+// Common tail: OR in fault-edge, PID-saturation, deadband-reset, and
+// tuner-pending event bits, set in_fault, and advance _prevInFault. Called
+// from both the normal exit and the in-fault early return so event bits and
+// state always reflect the just-completed tick.
+void BalancingDrivetrainController::_finalizeTelemetry() {
+    uint32_t flags = 0;
+    if (!_prevInFault && _inFault) flags |= kEvent_FAULT_ENTER;
+    if (_prevInFault && !_inFault) flags |= kEvent_FAULT_EXIT;
+    if (_pitchPid.wasISaturated())     flags |= kEvent_PITCH_I_SATURATED;
+    if (_rollPid.wasISaturated())      flags |= kEvent_ROLL_I_SATURATED;
+    if (_pitchPid.wasOutSaturated())   flags |= kEvent_PITCH_OUT_SATURATED;
+    if (_rollPid.wasOutSaturated())    flags |= kEvent_ROLL_OUT_SATURATED;
+    if (_pitchPid.wasDeadbandReset())  flags |= kEvent_PITCH_DEADBAND_RESET;
+    if (_rollPid.wasDeadbandReset())   flags |= kEvent_ROLL_DEADBAND_RESET;
+    if (_tuner != nullptr)             flags |= _tuner->consumePending();
+    _lastTelemetry.event_flags = flags;
+    _lastTelemetry.in_fault    = _inFault ? 1 : 0;
+    _prevInFault = _inFault;
 }
 
 void BalancingDrivetrainController::stop() {
