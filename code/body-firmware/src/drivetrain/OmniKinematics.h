@@ -27,7 +27,12 @@ public:
 
         std::array<float, 3> rpms;
         for (int i = 0; i < 3; i++) {
-            const float w = scale * (-_sin[i] * v.vx + _cos[i] * v.vy + R * v.omega);
+            // B7: vx coefficient is +sin(θᵢ), not -sin(θᵢ). Bench Phase C
+            // confirmed `+vx` was inverted under the prior -sin convention
+            // (shell rolled BACKWARD instead of forward for REP-103 +x).
+            // The vy/omega terms are already REP-103-aligned (see commit
+            // 6486be8 which fixed those signs but missed vx).
+            const float w = scale * (_sin[i] * v.vx + _cos[i] * v.vy + R * v.omega);
             rpms[i] = w * RAD_TO_RPM;
         }
 

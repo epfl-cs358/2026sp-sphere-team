@@ -48,9 +48,12 @@ void test_pure_forward() {
     DrivetrainConfig cfg = pushConfig();
     cfg.maxRPM = 300.0f;
     OmniKinematics kin(cfg);
+    // Push config: wheel 0 at 0° → +sin(0°)·vx=0, idle for pure vx.
+    // Wheel 1 at 120° → +sin(120°)·vx = +√3/2, positive RPM.
+    // Wheel 2 at 240° → +sin(240°)·vx = -√3/2, negative RPM.
     auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
 
-    float expectedRPM1 = toRPM(-20.0f * SQRT3_2);
+    float expectedRPM1 = toRPM(20.0f * SQRT3_2);
     float expectedRPM2 = -expectedRPM1;
 
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[0]);
@@ -203,11 +206,11 @@ void test_pull_pure_forward() {
     OmniKinematics kin(cfg);
     auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
 
-    // motor 0 at θ=180°: -sin(180°)=0, idle for pure vx
+    // motor 0 at θ=180°: +sin(180°)=0, idle for pure vx
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0f, rpms[0]);
-    // motor 1 at θ=300°: -sin(300°)=+√3/2 → positive RPM
-    // motor 2 at θ= 60°: -sin( 60°)=-√3/2 → negative RPM, equal magnitude
-    float expectedRPM1 = toRPM(20.0f * SQRT3_2);
+    // motor 1 at θ=300°: +sin(300°)=-√3/2 → negative RPM
+    // motor 2 at θ= 60°: +sin( 60°)=+√3/2 → positive RPM, equal magnitude
+    float expectedRPM1 = toRPM(-20.0f * SQRT3_2);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, expectedRPM1, rpms[1]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -expectedRPM1, rpms[2]);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, fabsf(rpms[1]), fabsf(rpms[2]));
