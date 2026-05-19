@@ -38,6 +38,8 @@ constexpr Field kAllFields[] = {
     {"rollKp",            &BalanceConfig::rollKp},
     {"rollKi",            &BalanceConfig::rollKi},
     {"rollKd",            &BalanceConfig::rollKd},
+    {"pitchDeadband",     &BalanceConfig::pitchDeadband},
+    {"rollDeadband",      &BalanceConfig::rollDeadband},
     {"maxOutputVelocity", &BalanceConfig::maxOutputVelocity},
     {"envelopeEnterSin",  &BalanceConfig::envelopeEnterSin},
     {"envelopeExitSin",   &BalanceConfig::envelopeExitSin},
@@ -159,7 +161,10 @@ void BalanceTuner::handle(const String& line) {
         _set(key, value);
         return;
     }
-    _emit(String("error: unknown balance verb"));
+    // Echo the unrecognized rest (quoted) so the operator can see if the
+    // input had hidden chars / odd whitespace / fragmentation. Without this
+    // the error is opaque when the literal-looking command is correct.
+    _emit(String("error: unknown balance verb: '") + rest + String("'"));
 }
 
 void BalanceTuner::_show(bool pidsOnly) {
@@ -181,11 +186,11 @@ void BalanceTuner::_status() {
     _emit(String("armed=") + String(armingLabel(ArmingState::get())));
 }
 
-void BalanceTuner::_set(const String& key, float value) {
+bool BalanceTuner::trySet(const String& key, float value, String& err) {
     const Field* f = findField(key);
     if (!f) {
-        _emit(String("error: unknown key ") + key);
-        return;
+        err = String("unknown key ") + key;
+        return false;
     }
 
     BalanceConfig* spare = _spare();
@@ -193,40 +198,69 @@ void BalanceTuner::_set(const String& key, float value) {
     *spare = *live;
     spare->*(f->member) = value;
 
-    // Validation.
     if (isGainField(f->name) && value < 0.0f) {
-        _emit(String("error: gain must be >= 0"));
-        return;
+        err = String("gain must be >= 0");
+        return false;
+    }
+    if ((std::strcmp(f->name, "pitchDeadband") == 0 ||
+         std::strcmp(f->name, "rollDeadband")  == 0) && value < 0.0f) {
+        err = String("deadband must be >= 0");
+        return false;
     }
     if (spare->envelopeExitSin >= spare->envelopeEnterSin) {
-        _emit(String("error: envelopeExitSin must be < envelopeEnterSin"));
-        return;
+        err = String("envelopeExitSin must be < envelopeEnterSin");
+        return false;
     }
     if (spare->maxTiltSetpoint >= std::asin(spare->envelopeEnterSin)) {
-        _emit(String("error: maxTiltSetpoint must be < asin(envelopeEnterSin)"));
-        return;
+        err = String("maxTiltSetpoint must be < asin(envelopeEnterSin)");
+        return false;
     }
     if (spare->maxOutputVelocity < 0.0f) {
-        _emit(String("error: maxOutputVelocity must be >= 0"));
-        return;
+        err = String("maxOutputVelocity must be >= 0");
+        return false;
     }
 
     _publish(spare);
-    _emit(String("ok: ") + key + String("=") + fmtFloat(value));
+    return true;
 }
 
-void BalanceTuner::_reset() {
+bool BalanceTuner::saveNvs() {
+    const BalanceConfig* live = _slot.load(std::memory_order_acquire);
+    if (!live) return false;
+    BalanceConfigStorage::save(*live);
+    return true;
+}
+
+void BalanceTuner::resetToDefaults() {
     BalanceConfig* spare = _spare();
     *spare = RobotConstants::balanceConfig();
     _publish(spare);
+}
+
+BalanceConfig BalanceTuner::snapshot() const {
+    const BalanceConfig* live = _slot.load(std::memory_order_acquire);
+    if (!live) return BalanceConfig{};
+    return *live;
+}
+
+void BalanceTuner::_set(const String& key, float value) {
+    String err;
+    if (trySet(key, value, err)) {
+        _emit(String("ok: ") + key + String("=") + fmtFloat(value));
+    } else {
+        _emit(String("error: ") + err);
+    }
+}
+
+void BalanceTuner::_reset() {
+    resetToDefaults();
     _emit(String("ok: reset to defaults"));
 }
 
 void BalanceTuner::_save() {
-    const BalanceConfig* live = _slot.load(std::memory_order_acquire);
-    if (!live) return;
-    BalanceConfigStorage::save(*live);
-    _emit(String("ok: saved"));
+    if (saveNvs()) {
+        _emit(String("ok: saved"));
+    }
 }
 
 void BalanceTuner::_publish(BalanceConfig* spare) {

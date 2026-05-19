@@ -37,6 +37,14 @@ public:
 
     void setPrint(PrintFn fn);
 
+    // Non-emitting variants used by the HTTP JSON API. On failure `err` is
+    // populated and the live slot is unchanged; on success the new value is
+    // published and the swap-quiescence delay is applied (same as `_set`).
+    bool trySet(const String& key, float value, String& err);
+    bool saveNvs();
+    void resetToDefaults();
+    BalanceConfig snapshot() const;
+
 private:
     BalanceConfig _bufA{};
     BalanceConfig _bufB{};
