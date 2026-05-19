@@ -50,12 +50,9 @@ class AsyncWebServerRequest {};
 
 class AsyncWebServer {
 public:
-    explicit AsyncWebServer(uint16_t port = 0) : _port(port) {}
+    explicit AsyncWebServer(uint16_t /*port*/ = 0) {}
 
     // Real API takes an `AsyncWebHandler*`. We type-erase as void* — the test
     // doesn't dispatch requests, it just needs the symbol to exist.
     void addHandler(void* /*handler*/) {}
-
-private:
-    uint16_t _port;
 };
