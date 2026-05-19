@@ -42,6 +42,17 @@ public:
         for (int i = 0; i < 3; i++) _targetRPMs[i] = 0.0f;
     }
 
+    // Pure inner-loop reset: clears per-wheel PID state and zeroes
+    // _targetRPMs but does NOT brake the motors. Used on arming-edge
+    // transitions so the next update(dt) recomputes cleanly with
+    // _firstCompute=true instead of D-spiking against a stale
+    // _prevMeasurement accumulated while the drivetrain was running
+    // unarmed.
+    void resetPids() override {
+        for (auto* p : _pids) p->reset();
+        for (int i = 0; i < 3; i++) _targetRPMs[i] = 0.0f;
+    }
+
 private:
     void setMotorSpeeds(float s0, float s1, float s2) {
         _motors[0]->setSpeed(s0);

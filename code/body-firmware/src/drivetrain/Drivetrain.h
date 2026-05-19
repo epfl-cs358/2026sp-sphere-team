@@ -24,6 +24,12 @@ public:
     // Emergency stop — zero all motors immediately.
     virtual void stop() = 0;
 
+    // Clear any inner control-loop state (e.g. per-wheel PIDs) without
+    // commanding the motors. Concrete drivetrains that maintain wheel-level
+    // PID state should override; the default is a no-op so drivetrains
+    // without inner loops compile unchanged.
+    virtual void resetPids() {}
+
 protected:
     Motor* _motors[3];
 };

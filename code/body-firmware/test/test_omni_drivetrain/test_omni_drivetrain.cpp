@@ -100,6 +100,52 @@ void test_stop_brakes_all_motors() {
     TEST_ASSERT_TRUE(m2.brakeCalled);
 }
 
+// resetPids() is the arming-edge counterpart to stop(): it MUST clear PID
+// state but MUST NOT brake the motors (no brake() call) and MUST zero the
+// target RPMs. Distinct from stop() which also calls Motor::brake().
+void test_resetPids_resets_pid_without_brake() {
+    OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
+
+    // Drive and update to accumulate PID state (target ≠ 0, no feedback).
+    dt.drive({1.0f, 0.0f, 0.0f});
+    dt.update(0.01f);
+
+    // Reset mocks so brake/setSpeed call counts only reflect post-reset
+    // activity. Also clear the prior lastSpeed so we can assert next call.
+    m0.resetMock();
+    m1.resetMock();
+    m2.resetMock();
+
+    dt.resetPids();
+
+    // Must NOT have braked the motors — discriminator vs stop().
+    TEST_ASSERT_FALSE(m0.brakeCalled);
+    TEST_ASSERT_FALSE(m1.brakeCalled);
+    TEST_ASSERT_FALSE(m2.brakeCalled);
+    // Must NOT have written any motor command either — pure state mutation.
+    TEST_ASSERT_EQUAL(0, m0.setSpeedCallCount);
+    TEST_ASSERT_EQUAL(0, m1.setSpeedCallCount);
+    TEST_ASSERT_EQUAL(0, m2.setSpeedCallCount);
+    // Targets zeroed.
+    auto targets = dt.getTargetRPMs();
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, targets[0]);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, targets[1]);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, targets[2]);
+
+    // After resetPids + new drive + update, PID starts fresh: first call's
+    // output is `kp * (target - measurement)` (clamped). Same check shape as
+    // test_stop_resets_pid below.
+    dt.drive({1.0f, 0.0f, 0.0f});
+    dt.update(0.01f);
+
+    OmniKinematics kin(testConfig());
+    auto rpms = kin.toWheelRPMs({1.0f, 0.0f, 0.0f});
+    float expected1 = rpms[1];
+    if (expected1 > 1.0f) expected1 = 1.0f;
+    if (expected1 < -1.0f) expected1 = -1.0f;
+    TEST_ASSERT_FLOAT_WITHIN(TOL, expected1, m1.lastSpeed);
+}
+
 void test_stop_resets_pid() {
     OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
 
@@ -228,6 +274,7 @@ int main() {
     RUN_TEST(test_update_pid_output_for_forward);
     RUN_TEST(test_stop_brakes_all_motors);
     RUN_TEST(test_stop_resets_pid);
+    RUN_TEST(test_resetPids_resets_pid_without_brake);
     RUN_TEST(test_zero_velocity_zero_speed);
     RUN_TEST(test_pid_convergence_with_feedback);
     RUN_TEST(test_stop_then_update_motors_stay_zero);
