@@ -30,6 +30,20 @@ void begin() {
         if (!g_user_cb) {
             return;
         }
+        // Strip trailing C-string null terminators and line endings — some
+        // WebSerial clients (including the official frontend on certain
+        // browsers) append a 0x00 to text payloads. Arduino String::trim()
+        // doesn't remove 0x00, so without this `equals("save")` against
+        // a `"save\0"` message returns false (length mismatch) and the
+        // dispatcher misroutes the verb.
+        while (len > 0) {
+            uint8_t b = data[len - 1];
+            if (b == 0x00 || b == '\r' || b == '\n') {
+                --len;
+                continue;
+            }
+            break;
+        }
         String msg;
         msg.reserve(len);
         for (size_t i = 0; i < len; ++i) {
@@ -43,17 +57,28 @@ void begin() {
 }
 
 void tick() {
-    // No-op: WebSerial 2.1.x on ESP32 is event-driven via AsyncTCP.
+    // WebSerial 2.x batches writes in a two-tier print buffer and only
+    // flushes either on buffer-fill or when `loop()` observes the flush
+    // timer has elapsed (WSL_PRINT_FLUSH_TIME_US / WSL_GLOBAL_FLUSH_TIME_MS).
+    // Without periodic pumping, a single println sits in the buffer until
+    // the next write triggers `loop()` inside `write()` — which is why
+    // operators saw a one-message lag (response visible only on the NEXT
+    // command). Calling loop() here at the main-loop cadence drains the
+    // buffer at roughly the LOOP_TICK_MS rate.
+    WebSerial.loop();
 }
 
+// Pre-begin() calls (e.g. wifi event callbacks firing during the initial STA
+// associate inside OtaSafeMode::begin()) fall back to Serial-only — calling
+// WebSerial.print() before WebSerial.begin() is undefined-behaviour territory.
 void print(const String& s) {
     Serial.print(s);
-    WebSerial.print(s);
+    if (g_started) WebSerial.print(s);
 }
 
 void println(const String& s) {
     Serial.println(s);
-    WebSerial.println(s);
+    if (g_started) WebSerial.println(s);
 }
 
 void printf(const char* fmt, ...) {
@@ -74,11 +99,15 @@ void printf(const char* fmt, ...) {
         buf[sizeof(buf) - 1] = '\0';
     }
     Serial.print(buf);
-    WebSerial.print(buf);
+    if (g_started) WebSerial.print(buf);
 }
 
 void onMessage(std::function<void(const String&)> cb) {
     g_user_cb = std::move(cb);
+}
+
+AsyncWebServer& server() {
+    return g_server;
 }
 
 }  // namespace RemoteSerial

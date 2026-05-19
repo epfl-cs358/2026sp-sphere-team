@@ -6,6 +6,7 @@
 
 #ifdef ARDUINO
 #include "OtaPolicy.h"
+#include "RemoteSerial.h"
 #include "wifi_credentials.h"
 
 #include <Arduino.h>
@@ -32,7 +33,9 @@ static void onOtaStart() {
     g_updating.store(true, std::memory_order_release);
     ArmingState::disarm();
 #ifdef ARDUINO
-    Serial.println("[ota] update starting");
+    // RemoteSerial fans out to both Serial and WebSerial — bench operators
+    // watching WebSerial during an OTA push see this line.
+    RemoteSerial::println("[ota] update starting");
 #endif
 }
 
@@ -64,15 +67,15 @@ void onWifiEvent(WiFiEvent_t e) {
     switch (e) {
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
             WiFi.setSleep(false);
-            Serial.println("[wifi] STA associated (PS=NONE)");
+            RemoteSerial::println("[wifi] STA associated (PS=NONE)");
             break;
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
             g_last_sta_connected_ms.store(millis(), std::memory_order_release);
-            Serial.print("[wifi] STA IP ");
-            Serial.println(WiFi.localIP());
+            RemoteSerial::printf("[wifi] STA IP %s\n",
+                                 WiFi.localIP().toString().c_str());
             break;
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-            Serial.println("[wifi] STA disconnected");
+            RemoteSerial::println("[wifi] STA disconnected");
             break;
         default:
             break;
@@ -137,11 +140,11 @@ void begin() {
     ArduinoOTA.onStart(onOtaStart);
     ArduinoOTA.onEnd([]() {
         g_updating.store(false, std::memory_order_release);
-        Serial.println("[ota] update complete; rebooting");
+        RemoteSerial::println("[ota] update complete; rebooting");
     });
     ArduinoOTA.onError([](ota_error_t e) {
         g_updating.store(false, std::memory_order_release);
-        Serial.printf("[ota] error %u\n", e);
+        RemoteSerial::printf("[ota] error %u\n", e);
     });
     ArduinoOTA.begin();
 
@@ -159,7 +162,7 @@ void tick() {
     if (OtaPolicy::shouldMarkValid(now, g_boot_ms, g_marked,
                                    MARK_VALID_DELAY_MS)) {
         if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-            Serial.println("[ota] firmware marked valid; rollback cancelled.");
+            RemoteSerial::println("[ota] firmware marked valid; rollback cancelled.");
         }
         g_marked = true;
     }
@@ -175,7 +178,10 @@ void tick() {
             now,
             g_last_sta_connected_ms.load(std::memory_order_acquire),
             OFFLINE_REBOOT_MS)) {
-        Serial.println("FATAL: no network at all — restarting.");
+        // Dual-write: ESP.restart() may not flush AsyncTCP, so we shove the
+        // FATAL line to both transports and accept that the WebSerial client
+        // may or may not receive it before reset.
+        RemoteSerial::println("FATAL: no network at all — restarting.");
         ESP.restart();
     }
 }
