@@ -264,6 +264,80 @@ void test_set_gains_changes_output() {
     TEST_ASSERT_FLOAT_WITHIN(TOL, 3.0f, after);
 }
 
+void test_accessors_reflect_last_compute() {
+    PID pid(2.0f, 0.5f, 0.1f, -10.0f, 10.0f);
+    float dt = 0.1f;
+
+    // Warm-up so _firstCompute flips and the D-term engages on the next call.
+    pid.compute(1.0f, 0.0f, dt);
+
+    float out = pid.compute(1.0f, 0.3f, dt);
+
+    TEST_ASSERT_FLOAT_WITHIN(TOL, out, pid.lastP() + pid.lastI() + pid.lastD());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.7f, pid.lastError());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, out, pid.lastOutput());
+}
+
+void test_was_deadband_reset_flag() {
+    PID pid(1.0f, 1.0f, 1.0f, -10.0f, 10.0f, 0.5f);
+    float dt = 0.1f;
+
+    float out = pid.compute(0.0f, 0.2f, dt);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, out);
+    TEST_ASSERT_TRUE(pid.wasDeadbandReset());
+
+    pid.compute(1.0f, 0.0f, dt);
+    TEST_ASSERT_FALSE(pid.wasDeadbandReset());
+}
+
+void test_was_i_saturated_flag() {
+    PID pid(0.0f, 1.0f, 0.0f, -1.0f, 1.0f);
+    float dt = 0.1f;
+
+    for (int i = 0; i < 100; ++i) {
+        pid.compute(10.0f, 0.0f, dt);
+    }
+    TEST_ASSERT_TRUE(pid.wasISaturated());
+
+    // Setpoint==measurement==0 → no integral growth, flag must clear.
+    pid.compute(0.0f, 0.0f, dt);
+    TEST_ASSERT_FALSE(pid.wasISaturated());
+}
+
+void test_was_out_saturated_flag() {
+    PID pid(10.0f, 0.0f, 0.0f, -1.0f, 1.0f);
+    float dt = 0.01f;
+
+    pid.compute(100.0f, 0.0f, dt);
+    TEST_ASSERT_TRUE(pid.wasOutSaturated());
+
+    pid.compute(0.05f, 0.0f, dt);
+    TEST_ASSERT_FALSE(pid.wasOutSaturated());
+}
+
+void test_reset_clears_all_introspection() {
+    PID pid(10.0f, 1.0f, 0.1f, -1.0f, 1.0f, 0.5f);
+    float dt = 0.1f;
+
+    // Drive into saturation + nonzero terms.
+    for (int i = 0; i < 50; ++i) {
+        pid.compute(100.0f, 0.0f, dt);
+    }
+    TEST_ASSERT_TRUE(pid.wasISaturated() || pid.wasOutSaturated());
+
+    pid.reset();
+
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastP());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastI());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastD());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastError());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastIntegral());
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, pid.lastOutput());
+    TEST_ASSERT_FALSE(pid.wasDeadbandReset());
+    TEST_ASSERT_FALSE(pid.wasISaturated());
+    TEST_ASSERT_FALSE(pid.wasOutSaturated());
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -302,6 +376,12 @@ int main() {
     RUN_TEST(test_4arg_respects_deadband);
 
     RUN_TEST(test_set_gains_changes_output);
+
+    RUN_TEST(test_accessors_reflect_last_compute);
+    RUN_TEST(test_was_deadband_reset_flag);
+    RUN_TEST(test_was_i_saturated_flag);
+    RUN_TEST(test_was_out_saturated_flag);
+    RUN_TEST(test_reset_clears_all_introspection);
 
     return UNITY_END();
 }
