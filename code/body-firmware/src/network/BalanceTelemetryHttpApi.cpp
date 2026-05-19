@@ -379,7 +379,10 @@ String latestJson() {
 String recentJson(std::size_t n) {
     if (n == 0) n = 100;
     if (n > BalanceTelemetryWs::kRingSize) n = BalanceTelemetryWs::kRingSize;
-    static BalanceTelemetry buf[BalanceTelemetryWs::kRingSize];
+    // Heap-alloc on first call (~150 KB at 300 B × 512). Function-scope static
+    // pointer keeps the buffer alive across calls without paying BSS — robot
+    // env DRAM was overflowing once `registerRoutes` made this path live.
+    static BalanceTelemetry* buf = new BalanceTelemetry[BalanceTelemetryWs::kRingSize]{};
     std::size_t got = BalanceTelemetryWs::snapshotRecent(buf, n);
 
     String out;
@@ -403,7 +406,9 @@ struct DtStats {
 
 DtStats computeDtStats() {
     constexpr std::size_t kWin = 100;
-    static BalanceTelemetry buf[kWin];
+    // Heap-alloc once on first call (~30 KB). Same rationale as recentJson:
+    // keep BSS small so the robot env links with WiFi + WS + AsyncTCP loaded.
+    static BalanceTelemetry* buf = new BalanceTelemetry[kWin]{};
     std::size_t got = BalanceTelemetryWs::snapshotRecent(buf, kWin);
 
     DtStats s{0.0, 0.0, 0.0};

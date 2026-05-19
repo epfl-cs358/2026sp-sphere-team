@@ -125,6 +125,11 @@ constexpr const char* kAllEventNames[16] = {
 }  // namespace
 
 void setUp() {
+    // init() materialises the heap-backed ring on first call (idempotent
+    // thereafter). Tests below publish + pumpOnce and read back via
+    // snapshotRecent() — that path requires the ring to exist.
+    static AsyncWebServer s(81);
+    BalanceTelemetryWs::init(s);
     BalanceTelemetryWs::resetForTesting();
 }
 
