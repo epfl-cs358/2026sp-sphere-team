@@ -154,59 +154,7 @@ void test_latest_json_includes_every_column() {
     }
 }
 
-// 2. /telemetry/recent?n=N returns oldest-to-newest, last N entries.
-void test_recent_json_returns_n_snapshots_oldest_to_newest() {
-    for (uint32_t i = 1; i <= 10; ++i) {
-        BalanceTelemetryWs::publish(makeSnap(i));
-        BalanceTelemetryWs::pumpOnce();
-    }
-    String s = BalanceTelemetryHttpApi::buildRecentJson(5);
-    std::string body(s.c_str(), s.length());
-
-    // Should be {"snapshots":[...]} with 5 elements.
-    TEST_ASSERT_TRUE(body.find("\"snapshots\"") != std::string::npos);
-
-    // First element seq=6, last seq=10. We assert by checking the first
-    // occurrence of "seq":6 precedes any later seq, and that "seq":10
-    // appears after "seq":9 etc.
-    auto p6 = body.find("\"seq\":6");
-    auto p7 = body.find("\"seq\":7");
-    auto p8 = body.find("\"seq\":8");
-    auto p9 = body.find("\"seq\":9");
-    auto p10 = body.find("\"seq\":10");
-    TEST_ASSERT_TRUE(p6 != std::string::npos);
-    TEST_ASSERT_TRUE(p7 != std::string::npos);
-    TEST_ASSERT_TRUE(p8 != std::string::npos);
-    TEST_ASSERT_TRUE(p9 != std::string::npos);
-    TEST_ASSERT_TRUE(p10 != std::string::npos);
-    TEST_ASSERT_TRUE(p6 < p7);
-    TEST_ASSERT_TRUE(p7 < p8);
-    TEST_ASSERT_TRUE(p8 < p9);
-    TEST_ASSERT_TRUE(p9 < p10);
-
-    // None of seq=1..5 should appear (they were superseded).
-    TEST_ASSERT_TRUE(body.find("\"seq\":1,") == std::string::npos);
-    TEST_ASSERT_TRUE(body.find("\"seq\":5,") == std::string::npos);
-}
-
-// 3. /telemetry/recent?n=N is bounded by the ring size.
-void test_recent_json_caps_at_ring_size() {
-    constexpr uint32_t kTotal =
-        static_cast<uint32_t>(BalanceTelemetryWs::kRingSize) + 88;
-    for (uint32_t i = 1; i <= kTotal; ++i) {
-        BalanceTelemetryWs::publish(makeSnap(i));
-        BalanceTelemetryWs::pumpOnce();
-    }
-    String s = BalanceTelemetryHttpApi::buildRecentJson(1000);
-    std::string body(s.c_str(), s.length());
-
-    // Count "seq": occurrences = number of snapshot objects.
-    std::size_t snaps = countSubstr(body, "\"seq\":");
-    TEST_ASSERT_TRUE(snaps <= BalanceTelemetryWs::kRingSize);
-    TEST_ASSERT_TRUE(snaps > 0);
-}
-
-// 4. /telemetry/stats shape — top-level keys and inner dt_ms keys present.
+// 2. /telemetry/stats shape — top-level keys and inner dt_ms keys present.
 void test_stats_json_shape() {
     BalanceTelemetryWs::publish(makeSnap(1, 0, 0.010f));
     BalanceTelemetryWs::pumpOnce();
@@ -222,7 +170,9 @@ void test_stats_json_shape() {
     TEST_ASSERT_TRUE(body.find("\"in_fault_count\"") != std::string::npos);
     TEST_ASSERT_TRUE(body.find("\"events_since_boot\"") != std::string::npos);
     TEST_ASSERT_TRUE(body.find("\"ws_drops\"") != std::string::npos);
-    TEST_ASSERT_TRUE(body.find("\"ring_overruns\"") != std::string::npos);
+    // ring_overruns key intentionally absent — no on-chip ring in the
+    // stream-only design.
+    TEST_ASSERT_TRUE(body.find("\"ring_overruns\"") == std::string::npos);
 
     // dt_ms inner shape.
     TEST_ASSERT_TRUE(body.find("\"min\"") != std::string::npos);
@@ -305,8 +255,6 @@ void test_header_text_matches_csv_order() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_latest_json_includes_every_column);
-    RUN_TEST(test_recent_json_returns_n_snapshots_oldest_to_newest);
-    RUN_TEST(test_recent_json_caps_at_ring_size);
     RUN_TEST(test_stats_json_shape);
     RUN_TEST(test_stats_event_counts_reflect_published);
     RUN_TEST(test_schema_json_lists_all_columns);
