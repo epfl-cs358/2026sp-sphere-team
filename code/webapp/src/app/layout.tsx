@@ -51,6 +51,12 @@ export default function RootLayout({
             >
               Control
             </Link>
+            <Link
+              href="/tune"
+              className="hover:text-zinc-100 transition-colors"
+            >
+              Tune
+            </Link>
           </div>
         </nav>
         <main className="flex flex-1 flex-col">{children}</main>

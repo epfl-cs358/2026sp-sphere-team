@@ -3,6 +3,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
 import {
   useKeyCommands,
   useTeleopSocket,
@@ -147,7 +148,15 @@ export default function ControlPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">RC Control</h1>
+        <div className="flex items-baseline gap-4">
+          <h1 className="text-xl font-semibold">RC Control</h1>
+          <Link
+            href="/tune"
+            className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            Balance tuner →
+          </Link>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 pl-3">
             <span className="text-xs text-zinc-500 font-mono">ws://</span>
