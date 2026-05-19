@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -63,11 +64,14 @@ constexpr std::size_t kCsvBufLen = 1200;  // ~14 chars/field * 83 fields, padded
 
 AsyncWebSocket g_ws("/telemetry");
 
-std::array<BalanceTelemetry, kRingSize> g_ring{};
-std::atomic<std::uint32_t>               g_writeIdx{0};
+// Heap-allocated lazily in init(). At ~300 B/entry × 512, the ring is ~150 KB —
+// too large for BSS on the robot env (WiFi + AsyncTCP + WS producer already eat
+// most of DRAM). ESP32 heap handles it easily. Static cost is one pointer.
+BalanceTelemetry*                          g_ring = nullptr;
+std::atomic<std::uint32_t>                 g_writeIdx{0};
 std::array<std::atomic<std::uint32_t>, 16> g_eventCounts{};
-std::atomic<std::uint32_t>               g_dropCount{0};
-std::atomic<bool>                        g_initDone{false};
+std::atomic<std::uint32_t>                 g_dropCount{0};
+std::atomic<bool>                          g_initDone{false};
 
 #ifdef ARDUINO
 QueueHandle_t g_queue = nullptr;
@@ -232,6 +236,11 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
 // reaches here), so the release store on g_writeIdx synchronises readers.
 
 void pumpSnapshot(const BalanceTelemetry& snap) {
+    // Ring lives on the heap and is allocated in init(). If a snapshot makes
+    // it through the queue before init() runs (only possible in tests, since
+    // device path can't publish before queue creation), drop it.
+    if (!g_ring) return;
+
     char line[kCsvBufLen];
     int n = writeCsv(line, sizeof(line), snap);
     if (n > 0 && static_cast<std::size_t>(n) < sizeof(line)) {
@@ -279,6 +288,10 @@ void init(AsyncWebServer& server) {
                                             std::memory_order_acq_rel)) {
         return;  // already initialised — idempotent
     }
+    // ~150 KB on ESP32 heap; avoids BSS pressure that blew the robot link.
+    if (!g_ring) {
+        g_ring = new BalanceTelemetry[kRingSize]{};
+    }
 #ifdef ARDUINO
     if (!g_queue) {
         g_queue = xQueueCreate(kQueueLen, sizeof(BalanceTelemetry));
@@ -312,7 +325,7 @@ void publish(const BalanceTelemetry& snap) {
 }
 
 std::size_t snapshotRecent(BalanceTelemetry* out, std::size_t maxN) {
-    if (!out || maxN == 0) return 0;
+    if (!out || maxN == 0 || !g_ring) return 0;
     const std::uint32_t total = g_writeIdx.load(std::memory_order_acquire);
     std::size_t avail = total < kRingSize ? static_cast<std::size_t>(total)
                                           : kRingSize;
@@ -363,7 +376,9 @@ void resetForTesting() {
     g_writeIdx.store(0, std::memory_order_release);
     g_dropCount.store(0, std::memory_order_relaxed);
     for (auto& c : g_eventCounts) c.store(0, std::memory_order_relaxed);
-    for (auto& r : g_ring) r = BalanceTelemetry{};
+    if (g_ring) {
+        for (std::size_t i = 0; i < kRingSize; ++i) g_ring[i] = BalanceTelemetry{};
+    }
 #ifndef ARDUINO
     g_nativeQueue.clear();
 #endif
