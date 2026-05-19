@@ -1,6 +1,8 @@
 #include <unity.h>
 #include <cmath>
+#include <array>
 #include "test_mock_motor.h"
+#include "Drivetrain.h"
 #include "OmniDrivetrain.h"
 #include "OmniKinematics.h"
 #include "PID.h"
@@ -243,6 +245,93 @@ void test_stop_then_update_motors_stay_zero() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, fm2.lastSpeed);
 }
 
+// --- getWheelTelemetry() tests ------------------------------------------------
+
+void test_get_wheel_telemetry_returns_zero_before_update() {
+    OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
+
+    auto tele = dt.getWheelTelemetry();
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].target_rpm);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].meas_rpm);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].P);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].I);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].D);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].out);
+    }
+}
+
+void test_get_wheel_telemetry_reflects_drive_command() {
+    OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
+
+    BodyVelocity v = {0.5f, 0.0f, 0.0f};
+    dt.drive(v);
+
+    auto tele = dt.getWheelTelemetry();
+
+    OmniKinematics kin(testConfig());
+    auto rpms = kin.toWheelRPMs(v);
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOL, rpms[i], tele[i].target_rpm);
+        // update() not called yet — PID terms must remain zero.
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].P);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].I);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].D);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].out);
+    }
+}
+
+void test_get_wheel_telemetry_reflects_pid_state_after_update() {
+    OmniDrivetrain dt(m0, m1, m2, testConfig(), pid0, pid1, pid2);
+
+    m0.filteredRpmToReturn = 1.0f;
+    m1.filteredRpmToReturn = 2.0f;
+    m2.filteredRpmToReturn = 3.0f;
+
+    BodyVelocity v = {1.0f, 0.0f, 0.0f};
+    dt.drive(v);
+    dt.update(0.01f);
+
+    auto tele = dt.getWheelTelemetry();
+
+    OmniKinematics kin(testConfig());
+    auto rpms = kin.toWheelRPMs(v);
+
+    MockMotor* motors[] = {&m0, &m1, &m2};
+    float expectedMeas[] = {1.0f, 2.0f, 3.0f};
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOL, rpms[i], tele[i].target_rpm);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, expectedMeas[i], tele[i].meas_rpm);
+        // The PID output is what gets written to the motor via setSpeed.
+        TEST_ASSERT_FLOAT_WITHIN(TOL, motors[i]->lastSpeed, tele[i].out);
+    }
+}
+
+// Minimal subclass used to exercise the virtual default in the base
+// Drivetrain<T>: it overrides only the pure-virtual hooks and inherits
+// getWheelTelemetry() unchanged.
+class TrivialDrivetrain : public Drivetrain<BodyVelocity> {
+public:
+    using Drivetrain::Drivetrain;
+    void drive(const BodyVelocity&) override {}
+    void update(float) override {}
+    void stop() override {}
+};
+
+void test_drivetrain_base_returns_zeroed_default() {
+    TrivialDrivetrain dt(m0, m1, m2);
+
+    auto tele = dt.getWheelTelemetry();
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].target_rpm);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].meas_rpm);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].P);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].I);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].D);
+        TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, tele[i].out);
+    }
+}
+
 void test_rapid_direction_reversal() {
     MockMotor fm0, fm1, fm2;
     setupPlantMotors(fm0, fm1, fm2);
@@ -279,5 +368,9 @@ int main() {
     RUN_TEST(test_pid_convergence_with_feedback);
     RUN_TEST(test_stop_then_update_motors_stay_zero);
     RUN_TEST(test_rapid_direction_reversal);
+    RUN_TEST(test_get_wheel_telemetry_returns_zero_before_update);
+    RUN_TEST(test_get_wheel_telemetry_reflects_drive_command);
+    RUN_TEST(test_get_wheel_telemetry_reflects_pid_state_after_update);
+    RUN_TEST(test_drivetrain_base_returns_zeroed_default);
     return UNITY_END();
 }
