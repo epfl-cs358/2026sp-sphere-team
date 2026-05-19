@@ -45,10 +45,19 @@ public:
     void resetToDefaults();
     BalanceConfig snapshot() const;
 
+    // Atomically reads and clears the latched event bits accumulated since
+    // the last call. Bit positions match `BalanceTelemetry` event_flags
+    // (GAIN_CHANGED / CONFIG_SAVED / CONFIG_RESET). Single-consume: the
+    // returned value is the prior contents; the field is reset to zero.
+    uint32_t consumePending() {
+        return _pendingEvents.exchange(0, std::memory_order_acq_rel);
+    }
+
 private:
     BalanceConfig _bufA{};
     BalanceConfig _bufB{};
     std::atomic<const BalanceConfig*> _slot{nullptr};
+    std::atomic<uint32_t> _pendingEvents{0};
     PrintFn _print;
 
     // True if `_slot.load()` currently points at `_bufA` (so the spare is `_bufB`).

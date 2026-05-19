@@ -33,9 +33,14 @@ DEFINE_FAKE_VOID_FUNC(prefs_end);
 #include "BalanceTuner.cpp"
 
 // TODO(wave2): switch to <BalanceTelemetry.h> constants once that header lands.
-static constexpr uint32_t kEvent_GAIN_CHANGED_LOCAL = 1u << 12;
-static constexpr uint32_t kEvent_CONFIG_SAVED_LOCAL = 1u << 13;
-static constexpr uint32_t kEvent_CONFIG_RESET_LOCAL = 1u << 14;
+// Wrapped in a named namespace + explicit qualification at call sites because
+// this TU also #includes BalanceTuner.cpp, whose anonymous-namespace constants
+// would otherwise be ambiguous with these.
+namespace test_events {
+static constexpr uint32_t kEvent_GAIN_CHANGED = 1u << 12;
+static constexpr uint32_t kEvent_CONFIG_SAVED = 1u << 13;
+static constexpr uint32_t kEvent_CONFIG_RESET = 1u << 14;
+}  // namespace test_events
 
 // ---- output capture ------------------------------------------------------
 
@@ -79,6 +84,9 @@ void setUp() {
     g_captured.clear();
     g_tuner.setPrint(&capture_print);
     g_tuner.begin(RobotConstants::balanceConfig());
+    // `g_tuner` is file-scope; prior tests' mutations leave bits in
+    // `_pendingEvents`. Flush so each test sees a fresh accumulator.
+    (void)g_tuner.consumePending();
 }
 
 void tearDown() {}
@@ -231,7 +239,7 @@ void test_try_set_success_ors_gain_changed_bit() {
     bool ok = g_tuner.trySet(String("pitchKp"), 1.5f, err);
     TEST_ASSERT_TRUE(ok);
     uint32_t first = g_tuner.consumePending();
-    TEST_ASSERT_TRUE((first & kEvent_GAIN_CHANGED_LOCAL) != 0u);
+    TEST_ASSERT_TRUE((first & test_events::kEvent_GAIN_CHANGED) != 0u);
     // Single-consume semantics.
     TEST_ASSERT_EQUAL_UINT32(0u, g_tuner.consumePending());
 }
@@ -247,13 +255,13 @@ void test_save_nvs_ors_config_saved_bit() {
     bool ok = g_tuner.saveNvs();
     TEST_ASSERT_TRUE(ok);
     uint32_t bits = g_tuner.consumePending();
-    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_SAVED_LOCAL) != 0u);
+    TEST_ASSERT_TRUE((bits & test_events::kEvent_CONFIG_SAVED) != 0u);
 }
 
 void test_reset_to_defaults_ors_config_reset_bit() {
     g_tuner.resetToDefaults();
     uint32_t bits = g_tuner.consumePending();
-    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_RESET_LOCAL) != 0u);
+    TEST_ASSERT_TRUE((bits & test_events::kEvent_CONFIG_RESET) != 0u);
 }
 
 void test_multiple_events_or_together() {
@@ -262,8 +270,8 @@ void test_multiple_events_or_together() {
     TEST_ASSERT_TRUE(ok);
     g_tuner.resetToDefaults();
     uint32_t bits = g_tuner.consumePending();
-    TEST_ASSERT_TRUE((bits & kEvent_GAIN_CHANGED_LOCAL) != 0u);
-    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_RESET_LOCAL) != 0u);
+    TEST_ASSERT_TRUE((bits & test_events::kEvent_GAIN_CHANGED) != 0u);
+    TEST_ASSERT_TRUE((bits & test_events::kEvent_CONFIG_RESET) != 0u);
 }
 
 int main() {
