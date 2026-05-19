@@ -22,7 +22,7 @@
 
 enum class FrameKind : uint8_t { Velocity, Control };
 
-enum class ControlVerb : uint8_t { Arm, Disarm, Kill, ClearKill };
+enum class ControlVerb : uint8_t { Arm, Disarm, Kill, ClearKill, QueryArmState };
 
 enum class FrameParseError {
     None,
@@ -72,6 +72,8 @@ inline FrameParseResult parseCommandFrame(const uint8_t* payload, size_t length)
             r.control = ControlVerb::Kill;
         } else if (std::strcmp(verb, "clearkill") == 0) {
             r.control = ControlVerb::ClearKill;
+        } else if (std::strcmp(verb, "armstate?") == 0) {
+            r.control = ControlVerb::QueryArmState;
         } else {
             r.error = FrameParseError::InvalidControlVerb;
         }

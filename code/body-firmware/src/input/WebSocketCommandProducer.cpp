@@ -165,7 +165,23 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
 
             const uint32_t beforeVelocityCount =
                 _frameCount.load(std::memory_order_relaxed);
-            dispatchFrame(_latch, _frameCount, result);
+            // QueryArmState callback echoes `armstate:<state>` back on the
+            // active client so the webapp can reconcile its optimistic local
+            // arming state with firmware truth on reconnect.
+            auto onQueryArmState = [this, clientNum](ArmingState::State s) {
+                const char* name = "disarmed";
+                switch (s) {
+                    case ArmingState::State::Disarmed: name = "disarmed"; break;
+                    case ArmingState::State::Armed:    name = "armed";    break;
+                    case ArmingState::State::Killed:   name = "killed";   break;
+                }
+                if (_server) {
+                    char msg[32];
+                    int n = snprintf(msg, sizeof(msg), "armstate:%s", name);
+                    if (n > 0) _server->sendTXT(clientNum, msg, n);
+                }
+            };
+            dispatchFrame(_latch, _frameCount, result, onQueryArmState);
 
             // Periodic counter dump every 1000 *velocity* frames (~10s @ 100 Hz).
             // Control frames bypass the counter (rare, not stick throughput).

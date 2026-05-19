@@ -38,6 +38,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 
 class WebSocketsServer;  // forward decl from arduinoWebSockets
 
@@ -54,11 +55,17 @@ public:
     bool connected() const override;
 
     // Route a parsed frame: velocity frames write the latch, control frames
-    // invoke the matching ArmingState transition. Defined inline so the
-    // dispatch logic can be unit-tested without linking the transport layer.
+    // invoke the matching ArmingState transition. QueryArmState is a
+    // read-only verb that fires the supplied callback with the current arming
+    // state so the caller (typically a WS handler) can echo back a status
+    // line. The callback is optional; pass nullptr to no-op the query.
+    // Defined inline so the dispatch logic can be unit-tested without linking
+    // the transport layer.
+    using QueryArmStateCallback = std::function<void(ArmingState::State)>;
     static inline void dispatchFrame(CommandLatch<BodyVelocity>& latch,
                                      std::atomic<uint32_t>& frameCount,
-                                     const FrameParseResult& r) {
+                                     const FrameParseResult& r,
+                                     const QueryArmStateCallback& onQueryArmState = nullptr) {
         if (r.kind == FrameKind::Velocity) {
             latch.write(r.velocity);
             frameCount.fetch_add(1, std::memory_order_relaxed);
@@ -70,6 +77,10 @@ public:
             case ControlVerb::Disarm:    ArmingState::disarm();    verbName = "disarm";    break;
             case ControlVerb::Kill:      ArmingState::kill();      verbName = "kill";      break;
             case ControlVerb::ClearKill: ArmingState::clearKill(); verbName = "clearkill"; break;
+            case ControlVerb::QueryArmState:
+                verbName = "armstate?";
+                if (onQueryArmState) onQueryArmState(ArmingState::get());
+                break;
         }
 #ifdef ARDUINO
         Serial.printf("[ws] control: %s\n", verbName);

@@ -25,6 +25,7 @@ FAKE_VOID_FUNC(arm);
 FAKE_VOID_FUNC(disarm);
 FAKE_VOID_FUNC(kill);
 FAKE_VOID_FUNC(clearKill);
+FAKE_VALUE_FUNC(State, get);
 }  // namespace ArmingState
 
 static CommandLatch<BodyVelocity>* latch = nullptr;
@@ -37,6 +38,7 @@ void setUp() {
     RESET_FAKE(ArmingState::disarm);
     RESET_FAKE(ArmingState::kill);
     RESET_FAKE(ArmingState::clearKill);
+    RESET_FAKE(ArmingState::get);
     FFF_RESET_HISTORY();
 }
 
@@ -103,6 +105,25 @@ void test_control_clearkill() {
     TEST_ASSERT_FALSE(latch->read().has_value());
 }
 
+void test_websocket_control_dispatch_echoes_armstate_on_query() {
+    // QueryArmState must invoke the supplied query callback exactly once and
+    // pass through the current arming state (read by the callback itself, not
+    // by dispatchFrame — dispatch stays decoupled from ArmingState reads).
+    int callbackCount = 0;
+    auto cb = [&callbackCount](ArmingState::State) { ++callbackCount; };
+
+    WebSocketCommandProducer::dispatchFrame(*latch, *frameCount,
+                                            makeControl(ControlVerb::QueryArmState),
+                                            cb);
+
+    TEST_ASSERT_EQUAL_INT(1, callbackCount);
+    TEST_ASSERT_EQUAL_UINT32(0, ArmingState::arm_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT32(0, ArmingState::disarm_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT32(0, ArmingState::kill_fake.call_count);
+    TEST_ASSERT_EQUAL_UINT32(0, ArmingState::clearKill_fake.call_count);
+    TEST_ASSERT_FALSE(latch->read().has_value());
+}
+
 void test_velocity_frame_writes_latch_does_not_invoke_arming() {
     WebSocketCommandProducer::dispatchFrame(*latch, *frameCount,
                                             makeVelocity(0.5f, -0.25f, 1.5f));
@@ -124,6 +145,7 @@ int main() {
     RUN_TEST(test_control_disarm);
     RUN_TEST(test_control_kill);
     RUN_TEST(test_control_clearkill);
+    RUN_TEST(test_websocket_control_dispatch_echoes_armstate_on_query);
     RUN_TEST(test_velocity_frame_writes_latch_does_not_invoke_arming);
     return UNITY_END();
 }

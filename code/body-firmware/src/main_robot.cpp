@@ -157,6 +157,7 @@ void controlTask(void* /*arg*/) {
     BodyVelocity last_known{};
     uint32_t     last_fresh_ms = 0;
     bool         have_seen_fresh = false;
+    ArmingState::State prev_arming = ArmingState::get();
 
     TickType_t lastWake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(CONTROL_PERIOD_MS);
@@ -174,7 +175,34 @@ void controlTask(void* /*arg*/) {
             have_seen_fresh = true;
         }
 
-        // 2) Drive command via staleness alone. The producer's connected()
+        // 2) Arming-edge dispatch. Runs BEFORE the staleness ramp so the
+        //    Armed-edge zeroing of last_known prevents a stale-replay on the
+        //    first armed tick.
+        //      Disarmed->Armed: seed last_fresh_ms / mark have_seen_fresh
+        //                       (B4: STALE_DISARM_MS backstop fires even if
+        //                        the operator never sends velocity) and clear
+        //                       last_known so the ramp can't replay a prior
+        //                       cycle's command.
+        //      Armed->Disarmed: clear PID windup so re-arm doesn't slam
+        //                       wheels. (B3)
+        //      *->Killed:       single hard brake on entry; subsequent ticks
+        //                       are no-ops (avoids re-clearing _inFault every
+        //                       tick which would defeat the Schmitt gate).
+        const auto arming = ArmingState::get();
+        if (arming != prev_arming) {
+            if (arming == ArmingState::State::Armed) {
+                last_fresh_ms   = now;
+                have_seen_fresh = true;
+                last_known      = BodyVelocity{0.0f, 0.0f, 0.0f};
+            } else if (prev_arming == ArmingState::State::Armed &&
+                       arming      == ArmingState::State::Disarmed) {
+                g_controller->resetIntegrators();
+            } else if (arming == ArmingState::State::Killed) {
+                g_controller->stop();
+            }
+        }
+
+        // 3) Drive command via staleness alone. The producer's connected()
         //    flag can lie on half-open TCP; age < 200ms is the actual safety
         //    net so we don't gate on connected() anymore.
         BodyVelocity drive_cmd{0.0f, 0.0f, 0.0f};
@@ -189,17 +217,21 @@ void controlTask(void* /*arg*/) {
             }
         }
 
-        // 3) Arming gate. Killed brakes immediately; Armed runs the controller
-        //    (with long-term producer-silence auto-disarm); Disarmed hard-zeros
-        //    and lets the per-wheel PIDs hold motors at zero. OTA composes by
-        //    driving ArmingState::disarm() from OtaSafeMode::onStart().
+        // 4) Arming-gated dispatch. Killed brakes immediately (edge already
+        //    called stop() once); Armed runs the controller and trips the
+        //    long-term auto-disarm; Disarmed hard-zeros and lets the per-wheel
+        //    PIDs hold motors at zero. OTA composes by driving
+        //    ArmingState::disarm() from OtaSafeMode::onStart().
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
-        const auto arming = ArmingState::get();
         if (arming == ArmingState::State::Killed) {
-            g_controller->stop();
             drive_cmd = {0.0f, 0.0f, 0.0f};
         } else if (arming == ArmingState::State::Armed) {
-            if (have_seen_fresh && (now - last_fresh_ms) > STALE_DISARM_MS) {
+            // B4: the auto-disarm backstop must fire even if the operator
+            // armed but never sent a velocity frame, so the `have_seen_fresh`
+            // guard is dropped here. The Armed edge seeds last_fresh_ms = now
+            // above, so this comparison is well-defined from the moment we
+            // enter Armed.
+            if ((now - last_fresh_ms) > STALE_DISARM_MS) {
                 ArmingState::disarm();
                 drive_cmd = {0.0f, 0.0f, 0.0f};
                 g_drivetrain.drive(drive_cmd);
@@ -212,6 +244,8 @@ void controlTask(void* /*arg*/) {
             g_drivetrain.drive(drive_cmd);
         }
         g_drivetrain.update(dt);
+
+        prev_arming = arming;
 
         esp_task_wdt_reset();
 

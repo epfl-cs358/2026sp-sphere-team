@@ -93,3 +93,8 @@ void BalancingDrivetrainController::stop() {
     _rollPid.reset();
     _inFault = false;
 }
+
+void BalancingDrivetrainController::resetIntegrators() {
+    _pitchPid.reset();
+    _rollPid.reset();
+}

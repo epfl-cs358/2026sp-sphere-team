@@ -10,9 +10,12 @@
 /// Writers (arm/disarm/kill/clearKill) may run from multiple tasks: the
 /// WebSocket dispatcher on Core 0, the RemoteSerial line handler on its own
 /// task, and OtaSafeMode::onStart from the Arduino loop() task on Core 1.
-/// State is std::atomic with release/acquire ordering; contention is rare
-/// enough that a plain store suffices over compare_exchange. Control-task
-/// readers use lock-free acquire loads.
+/// State is std::atomic with release/acquire ordering. arm/disarm/clearKill
+/// use compare_exchange_strong against the expected source state so a kill()
+/// landing between the load and store of a concurrent arm() cannot be
+/// silently overwritten — kill must always win. kill() itself remains a plain
+/// store so it can preempt any pending source state. Control-task readers use
+/// lock-free acquire loads.
 
 namespace ArmingState {
 
@@ -45,15 +48,23 @@ bool isArmed() {
 }
 
 void arm() {
-    if (get() == State::Killed) return;
-    g_state.store(State::Armed, std::memory_order_release);
-    arming_log("[arming] -> Armed");
+    State expected = State::Disarmed;
+    if (g_state.compare_exchange_strong(expected, State::Armed,
+                                        std::memory_order_acq_rel,
+                                        std::memory_order_acquire)) {
+        arming_log("[arming] -> Armed");
+    }
+    // If expected != Disarmed (Killed or already Armed), this is a no-op.
 }
 
 void disarm() {
-    if (get() == State::Killed) return;
-    g_state.store(State::Disarmed, std::memory_order_release);
-    arming_log("[arming] -> Disarmed");
+    State expected = State::Armed;
+    if (g_state.compare_exchange_strong(expected, State::Disarmed,
+                                        std::memory_order_acq_rel,
+                                        std::memory_order_acquire)) {
+        arming_log("[arming] -> Disarmed");
+    }
+    // If expected was Killed or Disarmed, no-op.
 }
 
 void kill() {
@@ -62,9 +73,12 @@ void kill() {
 }
 
 void clearKill() {
-    if (get() != State::Killed) return;
-    g_state.store(State::Disarmed, std::memory_order_release);
-    arming_log("[arming] clearKill -> Disarmed");
+    State expected = State::Killed;
+    if (g_state.compare_exchange_strong(expected, State::Disarmed,
+                                        std::memory_order_acq_rel,
+                                        std::memory_order_acquire)) {
+        arming_log("[arming] clearKill -> Disarmed");
+    }
 }
 
 }  // namespace ArmingState

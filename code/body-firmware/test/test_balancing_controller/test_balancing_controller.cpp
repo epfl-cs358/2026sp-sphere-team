@@ -253,6 +253,89 @@ void test_output_clamp_at_max_velocity() {
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.0f, drivetrain->lastDrive.vx);
 }
 
+// Baseline pin: stop() has THREE observable effects — clears PIDs, calls
+// drivetrain stop(), and clears _inFault. This is intentionally too aggressive
+// for the Disarmed path; resetIntegrators() (next test) will provide the
+// smaller-surface alternative that only does the first. Authored as part of
+// Slice A's TDD paper trail: documents the "before" contract so the new
+// resetIntegrators contract is meaningfully discriminating.
+void test_stop_clears_pids_calls_drivetrain_stop_and_clears_fault_latch() {
+    BalanceConfig hot = makeTestConfig();
+    hot.pitchKi = 1.0f;
+    hot.rollKi  = 1.0f;
+    *cfgBuf = hot;
+
+    // Wind up PIDs.
+    BodyVelocity cmd{0.5f, 0.5f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    for (int i = 0; i < 10; ++i) {
+        controller->update(cmd, level, 0.01f);
+    }
+    TEST_ASSERT_TRUE(std::fabs(drivetrain->lastDrive.vx) > 0.0f);
+
+    // Force fault latch on via the test hook.
+    controller->_setFaultForTest(true);
+    TEST_ASSERT_TRUE(controller->_faultForTest());
+
+    int driveCountsBeforeStop = drivetrain->driveCallCount;
+    controller->stop();
+
+    // Effect 1: drivetrain stop() was called.
+    TEST_ASSERT_EQUAL(1, drivetrain->stopCallCount);
+    // Effect 2: _inFault latch is cleared.
+    TEST_ASSERT_FALSE(controller->_faultForTest());
+    // Effect 3: PIDs are reset — a zero-cmd level frame produces zero output
+    // (would be non-zero if integrator survived).
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    controller->update(zero, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_TRUE(drivetrain->driveCallCount > driveCountsBeforeStop);
+}
+
+// B3: re-arm from disarm must not slam wheels from PID windup. resetIntegrators()
+// is the smaller-surface alternative to stop(): clears PID integrators but does
+// NOT call drivetrain.stop() and does NOT touch the _inFault latch.
+void test_resetIntegrators_clears_pid_state_without_stopping_drive() {
+    BalanceConfig hot = makeTestConfig();
+    hot.pitchKi = 1.0f;
+    hot.rollKi  = 1.0f;
+    *cfgBuf = hot;
+
+    // Wind up the pitch integrator with a forward command on level platform.
+    BodyVelocity cmd{0.5f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    for (int i = 0; i < 5; ++i) {
+        controller->update(cmd, level, 0.01f);
+    }
+    TEST_ASSERT_TRUE(std::fabs(drivetrain->lastDrive.vx) > 0.0f);
+
+    int stopCountBefore = drivetrain->stopCallCount;
+    controller->resetIntegrators();
+
+    // Drivetrain stop() must NOT have been invoked (this is the discriminator
+    // vs stop()).
+    TEST_ASSERT_EQUAL(stopCountBefore, drivetrain->stopCallCount);
+
+    // Feed an upright zero-command frame; output must be zero (no integral).
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    controller->update(zero, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
+}
+
+// Locks in the contract that resetIntegrators() does NOT clear the _inFault
+// latch. Direct fault injection via _setFaultForTest avoids coupling to
+// quatToBodyGravity (whose sign convention is the deferred B1 question).
+void test_resetIntegrators_preserves_fault_latch() {
+    controller->_setFaultForTest(true);
+    TEST_ASSERT_TRUE(controller->_faultForTest());
+
+    controller->resetIntegrators();
+
+    TEST_ASSERT_TRUE(controller->_faultForTest());
+}
+
 void test_stop_resets_pid_state_and_calls_drivetrain_stop() {
     // Warm-up with Ki > 0 so an integral builds up.
     BalanceConfig hot = makeTestConfig();
@@ -287,6 +370,9 @@ int main() {
     RUN_TEST(test_in_fault_between_thresholds_stays_in_fault);
     RUN_TEST(test_exit_fault_below_exit_envelope);
     RUN_TEST(test_output_clamp_at_max_velocity);
+    RUN_TEST(test_stop_clears_pids_calls_drivetrain_stop_and_clears_fault_latch);
+    RUN_TEST(test_resetIntegrators_clears_pid_state_without_stopping_drive);
+    RUN_TEST(test_resetIntegrators_preserves_fault_latch);
     RUN_TEST(test_stop_resets_pid_state_and_calls_drivetrain_stop);
     return UNITY_END();
 }

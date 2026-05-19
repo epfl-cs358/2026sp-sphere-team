@@ -143,6 +143,15 @@ void test_control_clearkill() {
                       static_cast<int>(r.control));
 }
 
+void test_command_frame_parser_recognizes_armstate_query() {
+    auto r = parse("c:armstate?");
+    TEST_ASSERT_TRUE(r.ok());
+    TEST_ASSERT_EQUAL(static_cast<int>(FrameKind::Control),
+                      static_cast<int>(r.kind));
+    TEST_ASSERT_EQUAL(static_cast<int>(ControlVerb::QueryArmState),
+                      static_cast<int>(r.control));
+}
+
 void test_control_unknown_verb() {
     auto r = parse("c:explode");
     TEST_ASSERT_FALSE(r.ok());
@@ -185,6 +194,7 @@ int main() {
     RUN_TEST(test_control_disarm);
     RUN_TEST(test_control_kill);
     RUN_TEST(test_control_clearkill);
+    RUN_TEST(test_command_frame_parser_recognizes_armstate_query);
     RUN_TEST(test_control_unknown_verb);
     RUN_TEST(test_control_missing_colon);
     RUN_TEST(test_negative_leading_minus_is_velocity);
