@@ -5,7 +5,20 @@
 
 #pragma once
 
+#include <array>
+
 #include "Motor.h"
+
+// Per-wheel snapshot of the inner control loop, surfaced for telemetry/tuning.
+// Populated by concrete drivetrains that maintain wheel-level PIDs.
+struct WheelTelemetry {
+    float target_rpm;
+    float meas_rpm;
+    float P;
+    float I;
+    float D;
+    float out;
+};
 
 template <typename TVelocity>
 class Drivetrain {
@@ -29,6 +42,12 @@ public:
     // PID state should override; the default is a no-op so drivetrains
     // without inner loops compile unchanged.
     virtual void resetPids() {}
+
+    // Per-wheel telemetry snapshot. Default returns zero-initialized values so
+    // drivetrains without inner PID loops compile and report sensibly.
+    virtual std::array<WheelTelemetry, 3> getWheelTelemetry() const {
+        return std::array<WheelTelemetry, 3>{};
+    }
 
 protected:
     Motor* _motors[3];

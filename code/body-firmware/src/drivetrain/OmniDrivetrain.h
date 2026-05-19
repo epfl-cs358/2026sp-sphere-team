@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "Drivetrain.h"
 #include "OmniKinematics.h"
 #include "PID.h"
@@ -34,6 +36,21 @@ public:
 
     std::array<float, 3> getTargetRPMs() const {
         return {_targetRPMs[0], _targetRPMs[1], _targetRPMs[2]};
+    }
+
+    std::array<WheelTelemetry, 3> getWheelTelemetry() const override {
+        std::array<WheelTelemetry, 3> t;
+        for (int i = 0; i < 3; i++) {
+            t[i] = WheelTelemetry{
+                _targetRPMs[i],
+                _motors[i]->getFilteredRPM(),
+                _pids[i]->lastP(),
+                _pids[i]->lastI(),
+                _pids[i]->lastD(),
+                _pids[i]->lastOutput(),
+            };
+        }
+        return t;
     }
 
     void stop() override {
