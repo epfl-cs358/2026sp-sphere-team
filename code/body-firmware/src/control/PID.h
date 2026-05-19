@@ -71,6 +71,10 @@ public:
         _kd = kd;
     }
 
+    void setDeadband(float d) {
+        _deadband = d;
+    }
+
 private:
     float _kp;
     float _ki;
