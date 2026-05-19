@@ -17,6 +17,12 @@ struct BalanceConfig {
     // Roll PID (left/right) — separate so platform asymmetries can be tuned
     float rollKp,  rollKi,  rollKd;
 
+    // Tilt-error deadband (rad). When the commanded tilt setpoint is ~0 AND
+    // the actual tilt is within this band, the PID emits 0 and resets its
+    // integrator — kills the small-signal limit cycle around upright.
+    float pitchDeadband;
+    float rollDeadband;
+
     // Output safety
     float maxOutputVelocity;   // m/s; clamp on |vx_out|, |vy_out|
 
