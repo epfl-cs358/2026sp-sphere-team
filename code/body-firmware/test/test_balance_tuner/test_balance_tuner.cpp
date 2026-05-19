@@ -32,6 +32,11 @@ DEFINE_FAKE_VOID_FUNC(prefs_end);
 #include "BalanceTuner.h"
 #include "BalanceTuner.cpp"
 
+// TODO(wave2): switch to <BalanceTelemetry.h> constants once that header lands.
+static constexpr uint32_t kEvent_GAIN_CHANGED_LOCAL = 1u << 12;
+static constexpr uint32_t kEvent_CONFIG_SAVED_LOCAL = 1u << 13;
+static constexpr uint32_t kEvent_CONFIG_RESET_LOCAL = 1u << 14;
+
 // ---- output capture ------------------------------------------------------
 
 static std::vector<std::string> g_captured;
@@ -215,6 +220,52 @@ void test_status_prints_pitch_roll_armed() {
     TEST_ASSERT_TRUE(captured_contains("armed"));
 }
 
+// ---- pending-events tests -----------------------------------------------
+
+void test_consume_pending_empty_returns_zero() {
+    TEST_ASSERT_EQUAL_UINT32(0u, g_tuner.consumePending());
+}
+
+void test_try_set_success_ors_gain_changed_bit() {
+    String err;
+    bool ok = g_tuner.trySet(String("pitchKp"), 1.5f, err);
+    TEST_ASSERT_TRUE(ok);
+    uint32_t first = g_tuner.consumePending();
+    TEST_ASSERT_TRUE((first & kEvent_GAIN_CHANGED_LOCAL) != 0u);
+    // Single-consume semantics.
+    TEST_ASSERT_EQUAL_UINT32(0u, g_tuner.consumePending());
+}
+
+void test_try_set_failure_does_not_or_bit() {
+    String err;
+    bool ok = g_tuner.trySet(String("nonexistent_key"), 1.0f, err);
+    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_tuner.consumePending());
+}
+
+void test_save_nvs_ors_config_saved_bit() {
+    bool ok = g_tuner.saveNvs();
+    TEST_ASSERT_TRUE(ok);
+    uint32_t bits = g_tuner.consumePending();
+    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_SAVED_LOCAL) != 0u);
+}
+
+void test_reset_to_defaults_ors_config_reset_bit() {
+    g_tuner.resetToDefaults();
+    uint32_t bits = g_tuner.consumePending();
+    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_RESET_LOCAL) != 0u);
+}
+
+void test_multiple_events_or_together() {
+    String err;
+    bool ok = g_tuner.trySet(String("pitchKp"), 2.25f, err);
+    TEST_ASSERT_TRUE(ok);
+    g_tuner.resetToDefaults();
+    uint32_t bits = g_tuner.consumePending();
+    TEST_ASSERT_TRUE((bits & kEvent_GAIN_CHANGED_LOCAL) != 0u);
+    TEST_ASSERT_TRUE((bits & kEvent_CONFIG_RESET_LOCAL) != 0u);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_show_dumps_current_config);
@@ -228,5 +279,11 @@ int main() {
     RUN_TEST(test_reset_reverts_to_defaults);
     RUN_TEST(test_save_invokes_storage);
     RUN_TEST(test_status_prints_pitch_roll_armed);
+    RUN_TEST(test_consume_pending_empty_returns_zero);
+    RUN_TEST(test_try_set_success_ors_gain_changed_bit);
+    RUN_TEST(test_try_set_failure_does_not_or_bit);
+    RUN_TEST(test_save_nvs_ors_config_saved_bit);
+    RUN_TEST(test_reset_to_defaults_ors_config_reset_bit);
+    RUN_TEST(test_multiple_events_or_together);
     return UNITY_END();
 }
