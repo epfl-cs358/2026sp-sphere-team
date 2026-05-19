@@ -31,6 +31,9 @@
 #include "ArmingState.h"
 #include "BalanceHttpApi.h"
 #include "ArmingHttpApi.h"
+#include "BalanceTelemetry.h"
+#include "BalanceTelemetryWs.h"
+#include "BalanceTelemetryHttpApi.h"
 #include "RemoteSerial.h"
 
 #include "BringUp.h"
@@ -188,6 +191,13 @@ void controlTask(void* /*arg*/) {
     UBaseType_t stack_hwm_min = static_cast<UBaseType_t>(-1);
     uint32_t    hwm_iter = 0;
 
+    static uint32_t prev_us = 0;
+    static float    dt_min = 1e9f;
+    static float    dt_max = 0.0f;
+    static float    dt_sum = 0.0f;
+    static uint16_t dt_n   = 0;
+    static uint32_t telem_seq = 0;
+
     while (true) {
         // 1) Pull freshest command from latch.
         auto fresh = g_latch->read();
@@ -243,6 +253,27 @@ void controlTask(void* /*arg*/) {
             }
         }
 
+        const uint32_t now_us = micros();
+        const float dt_measured = (prev_us == 0)
+            ? (CONTROL_PERIOD_MS / 1000.0f)
+            : (now_us - prev_us) * 1e-6f;
+        prev_us = now_us;
+
+        if (dt_n < 100) {
+            if (dt_measured < dt_min) dt_min = dt_measured;
+            if (dt_measured > dt_max) dt_max = dt_measured;
+            dt_sum += dt_measured;
+            dt_n++;
+            if (dt_n == 100) {
+                const float mean = dt_sum / dt_n;
+                RemoteSerial::printf(
+                    "[loop] dt min=%.3fms mean=%.3fms max=%.3fms jitter=%.3fms\n",
+                    dt_min * 1000, mean * 1000, dt_max * 1000,
+                    (dt_max - dt_min) * 1000);
+                dt_min = 1e9f; dt_max = 0.0f; dt_sum = 0.0f; dt_n = 0;
+            }
+        }
+
         // 4) Arming-gated dispatch. Killed brakes immediately (edge already
         //    called stop() once); Armed runs the controller against the
         //    (possibly ramped-to-zero) drive_cmd; Disarmed hard-zeros and
@@ -261,6 +292,77 @@ void controlTask(void* /*arg*/) {
             g_drivetrain.drive(drive_cmd);
         }
         g_drivetrain.update(dt);
+
+        BalanceTelemetry t{};
+        if (arming == ArmingState::State::Armed) {
+            t = g_controller->lastTelemetry();
+        } else {
+            // Read raw IMU even when disarmed — operator wants to verify before arming.
+            IMUReading imu_reading = g_imu.read();
+            t.quat_w = imu_reading.orientation.w;
+            t.quat_x = imu_reading.orientation.x;
+            t.quat_y = imu_reading.orientation.y;
+            t.quat_z = imu_reading.orientation.z;
+            t.accel_x = imu_reading.linearAccel.x;
+            t.accel_y = imu_reading.linearAccel.y;
+            t.accel_z = imu_reading.linearAccel.z;
+            t.gyro_x_raw = imu_reading.gyro.x;
+            t.gyro_y_raw = imu_reading.gyro.y;
+            t.gyro_z_raw = imu_reading.gyro.z;
+            const BalanceConfig snap = g_tuner.snapshot();
+            t.pitch_Kp = snap.pitchKp; t.pitch_Ki = snap.pitchKi; t.pitch_Kd = snap.pitchKd;
+            t.roll_Kp  = snap.rollKp;  t.roll_Ki  = snap.rollKi;  t.roll_Kd  = snap.rollKd;
+            t.pitch_deadband = snap.pitchDeadband;
+            t.roll_deadband  = snap.rollDeadband;
+            t.max_output_velocity = snap.maxOutputVelocity;
+            t.envelope_enter_sin  = snap.envelopeEnterSin;
+            t.envelope_exit_sin   = snap.envelopeExitSin;
+            t.tilt_per_velocity   = snap.tiltPerVelocity;
+            t.max_tilt_setpoint   = snap.maxTiltSetpoint;
+        }
+
+        t.seq = telem_seq++;
+        t.t_us = now_us;
+        t.dt_measured = dt_measured;
+        t.dt_used     = dt;
+        t.cmd_vx_raw = last_known.vx;
+        t.cmd_vy_raw = last_known.vy;
+        t.cmd_omega_raw = last_known.omega;
+        t.cmd_vx = drive_cmd.vx;
+        t.cmd_vy = drive_cmd.vy;
+        t.cmd_omega = drive_cmd.omega;
+        t.cmd_age_ms = have_seen_fresh ? (now - last_fresh_ms) : 0;
+        t.cmd_stale  = (have_seen_fresh &&
+                        (now - last_fresh_ms) >= STALENESS_TIMEOUT_MS) ? 1 : 0;
+        t.armed_state = (arming == ArmingState::State::Armed)  ? 1
+                      : (arming == ArmingState::State::Killed) ? 2 : 0;
+
+        {
+            const auto wt = g_drivetrain.getWheelTelemetry();
+            for (int i = 0; i < 3; ++i) {
+                t.wheel_target_rpm[i] = wt[i].target_rpm;
+                t.wheel_meas_rpm[i]   = wt[i].meas_rpm;
+                t.wheel_P[i] = wt[i].P;
+                t.wheel_I[i] = wt[i].I;
+                t.wheel_D[i] = wt[i].D;
+                t.wheel_out[i] = wt[i].out;
+            }
+        }
+
+        if (arming != prev_arming) {
+            if (arming == ArmingState::State::Armed) t.event_flags |= kEvent_ARMED_EDGE;
+            if (prev_arming == ArmingState::State::Armed &&
+                arming      == ArmingState::State::Disarmed) {
+                t.event_flags |= kEvent_DISARMED_EDGE;
+            }
+            if (arming == ArmingState::State::Killed) t.event_flags |= kEvent_KILLED_EDGE;
+            if (prev_arming == ArmingState::State::Killed &&
+                arming      != ArmingState::State::Killed) {
+                t.event_flags |= kEvent_KILL_CLEARED;
+            }
+        }
+
+        BalanceTelemetryWs::publish(t);
 
         prev_arming = arming;
 
@@ -316,7 +418,10 @@ void setup() {
     g_tuner.begin(boot_cfg);
     BalanceHttpApi::registerRoutes(RemoteSerial::server(), g_tuner);
     ArmingHttpApi::registerRoutes(RemoteSerial::server());
+    BalanceTelemetryWs::init(RemoteSerial::server());
+    BalanceTelemetryHttpApi::registerRoutes(RemoteSerial::server());
     g_controller = new BalancingDrivetrainController(g_drivetrain, g_imu, g_tuner.slot());
+    g_controller->setTuner(&g_tuner);
 
     // Gate: no producer, no control task, no PWM until the IMU is fully
     // calibrated. Motors stay at PWM=0 from begin() throughout this wait.
