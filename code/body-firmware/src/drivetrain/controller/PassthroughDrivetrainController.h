@@ -21,4 +21,10 @@ public:
     void stop() override {
         _drivetrain.stop();
     }
+
+    // Passthrough doesn't accumulate its own state, but the underlying
+    // drivetrain may carry inner-loop PID state across arming cycles.
+    // Forward the edge so wheel PIDs (e.g. inside OmniDrivetrain) reset.
+    void onArmed()    override { _drivetrain.resetPids(); }
+    void onDisarmed() override { _drivetrain.resetPids(); }
 };
