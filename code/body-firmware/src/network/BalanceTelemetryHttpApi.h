@@ -8,18 +8,22 @@
 
 class AsyncWebServer;
 
-// HTTP polling API for the balancing telemetry stream. Sits in front of the
-// 512-deep ring buffer + per-event counters owned by BalanceTelemetryWs so
-// any client (curl, Claude, the webapp dashboard) can read the same data the
-// WS stream emits — without subscribing to the live CSV feed.
+// HTTP polling API for the balancing telemetry stream. Stream-only design:
+// the chip publishes via WS; history lives on the laptop capture daemon, not
+// on the ESP32. These endpoints expose just the latest snapshot + running
+// stats + schema, so any client (curl, Claude, the webapp dashboard) can
+// poll without subscribing to the live CSV feed.
 //
 //   GET /telemetry/latest   -> single most-recent snapshot as JSON
-//   GET /telemetry/recent   -> ?n=N (default 100, cap 512) last snapshots
 //   GET /telemetry/stats    -> seq, uptime, dt_ms{min,mean,max,jitter},
-//                              events_since_boot, ws_drops, ring_overruns
+//                              events_since_boot, ws_drops
 //   GET /telemetry/schema   -> 83-column metadata + event-bit decode
 //   GET /telemetry/header   -> canonical CSV header (text/plain)
 //   OPTIONS /telemetry/*    -> CORS preflight (origin *)
+//
+// For history beyond "latest", use `tune_pid.py slice` against the laptop's
+// captured CSV — keeping a multi-second ring on-chip would re-introduce the
+// DRAM-overflow class of bug the stream-only design was built to avoid.
 //
 // All responses include permissive CORS headers (origin *) so the webapp on
 // any port — and any browser — can consume them. JSON is hand-rolled
@@ -34,7 +38,6 @@ void registerRoutes(AsyncWebServer& server);
 // Test hooks: exercise the JSON/text builders without dispatching through
 // AsyncWebServer (the native stub doesn't route requests).
 String buildLatestJson();
-String buildRecentJson(std::size_t n);
 String buildStatsJson();
 String buildSchemaJson();
 String buildHeader();

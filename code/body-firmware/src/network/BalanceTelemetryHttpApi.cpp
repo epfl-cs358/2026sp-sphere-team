@@ -369,72 +369,20 @@ String latestJson() {
     BalanceTelemetry snap{};
     // Zero-init means a "no data yet" response still has every key — clients
     // can build a column index from /telemetry/latest at boot.
-    (void)BalanceTelemetryWs::snapshotRecent(&snap, 1);
+    (void)BalanceTelemetryWs::latest(&snap);
     String out;
     out.reserve(1700);
     appendSnapshotJson(out, snap);
     return out;
 }
 
-String recentJson(std::size_t n) {
-    if (n == 0) n = 100;
-    if (n > BalanceTelemetryWs::kRingSize) n = BalanceTelemetryWs::kRingSize;
-    // Heap-alloc on first call (~150 KB at 300 B × 512). Function-scope static
-    // pointer keeps the buffer alive across calls without paying BSS — robot
-    // env DRAM was overflowing once `registerRoutes` made this path live.
-    static BalanceTelemetry* buf = new BalanceTelemetry[BalanceTelemetryWs::kRingSize]{};
-    std::size_t got = BalanceTelemetryWs::snapshotRecent(buf, n);
-
-    String out;
-    out.reserve(1700 * (got + 1) + 32);
-    out += "{\"snapshots\":[";
-    for (std::size_t i = 0; i < got; ++i) {
-        if (i > 0) out += ",";
-        appendSnapshotJson(out, buf[i]);
-    }
-    out += "]}";
-    return out;
-}
-
-// dt_ms window stats computed from the last 100 snapshots (or fewer if the
-// ring isn't full yet). Returns min, mean, max in milliseconds.
-struct DtStats {
-    double min_ms;
-    double mean_ms;
-    double max_ms;
-};
-
-DtStats computeDtStats() {
-    constexpr std::size_t kWin = 100;
-    // Heap-alloc once on first call (~30 KB). Same rationale as recentJson:
-    // keep BSS small so the robot env links with WiFi + WS + AsyncTCP loaded.
-    static BalanceTelemetry* buf = new BalanceTelemetry[kWin]{};
-    std::size_t got = BalanceTelemetryWs::snapshotRecent(buf, kWin);
-
-    DtStats s{0.0, 0.0, 0.0};
-    if (got == 0) return s;
-
-    double mn = 1e9, mx = -1e9, sum = 0.0;
-    std::size_t valid = 0;
-    for (std::size_t i = 0; i < got; ++i) {
-        double dt_ms = static_cast<double>(buf[i].dt_measured) * 1000.0;
-        // Skip the very first snapshot if it has a zero dt_measured — the
-        // control loop hasn't tared yet on entry.
-        if (dt_ms <= 0.0) continue;
-        if (dt_ms < mn) mn = dt_ms;
-        if (dt_ms > mx) mx = dt_ms;
-        sum += dt_ms;
-        ++valid;
-    }
-    if (valid == 0) return s;
-    s.min_ms  = mn;
-    s.max_ms  = mx;
-    s.mean_ms = sum / static_cast<double>(valid);
-    return s;
-}
-
 String statsJson() {
-    DtStats dt = computeDtStats();
+    float mn_s = 0.0f, mean_s = 0.0f, mx_s = 0.0f;
+    BalanceTelemetryWs::dtStats(&mn_s, &mean_s, &mx_s);
+    const double mn_ms   = static_cast<double>(mn_s)   * 1000.0;
+    const double mean_ms = static_cast<double>(mean_s) * 1000.0;
+    const double mx_ms   = static_cast<double>(mx_s)   * 1000.0;
+
     const std::uint32_t seq         = BalanceTelemetryWs::writeIdx();
     const std::uint32_t in_fault    = BalanceTelemetryWs::eventCount(4);
     const std::uint32_t ws_drops    = BalanceTelemetryWs::dropCount();
@@ -454,7 +402,7 @@ String statsJson() {
         "\"events_since_boot\":{",
         static_cast<unsigned>(seq),
         uptime_s,
-        dt.min_ms, dt.mean_ms, dt.max_ms, (dt.max_ms - dt.min_ms),
+        mn_ms, mean_ms, mx_ms, (mx_ms - mn_ms),
         static_cast<unsigned>(in_fault));
     out += head;
 
@@ -472,7 +420,7 @@ String statsJson() {
     char tail[96];
     std::snprintf(
         tail, sizeof(tail),
-        "},\"ws_drops\":%u,\"ring_overruns\":0}",
+        "},\"ws_drops\":%u}",
         static_cast<unsigned>(ws_drops));
     out += tail;
     return out;
@@ -521,16 +469,6 @@ void registerRoutes(AsyncWebServer& server) {
         sendJson(req, 200, latestJson());
     });
 
-    server.on("/telemetry/recent", HTTP_GET, [](AsyncWebServerRequest* req) {
-        std::size_t n = 100;
-        if (req->hasParam("n")) {
-            const String v = req->getParam("n")->value();
-            long parsed = std::strtol(v.c_str(), nullptr, 10);
-            if (parsed > 0) n = static_cast<std::size_t>(parsed);
-        }
-        sendJson(req, 200, recentJson(n));
-    });
-
     server.on("/telemetry/stats", HTTP_GET, [](AsyncWebServerRequest* req) {
         sendJson(req, 200, statsJson());
     });
@@ -545,9 +483,6 @@ void registerRoutes(AsyncWebServer& server) {
 
     // CORS preflight — match each /telemetry/* with OPTIONS.
     server.on("/telemetry/latest", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
-        sendJson(req, 204, String());
-    });
-    server.on("/telemetry/recent", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
         sendJson(req, 204, String());
     });
     server.on("/telemetry/stats", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
@@ -566,7 +501,6 @@ void registerRoutes(AsyncWebServer& server) {
 
 #ifdef BB8_TEST_HOOKS
 String buildLatestJson()                 { return latestJson(); }
-String buildRecentJson(std::size_t n)    { return recentJson(n); }
 String buildStatsJson()                  { return statsJson(); }
 String buildSchemaJson()                 { return schemaJson(); }
 String buildHeader()                     { return headerText(); }
