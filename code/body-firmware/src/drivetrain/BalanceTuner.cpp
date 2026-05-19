@@ -10,6 +10,7 @@
 
 #include "ArmingState.h"
 #include "BalanceConfigStorage.h"
+#include "BalanceTelemetry.h"
 #include "RobotConstants.h"
 
 #ifdef ARDUINO
@@ -19,11 +20,6 @@
 #endif
 
 namespace {
-
-// TODO(wave2): switch to <BalanceTelemetry.h> constants once that header lands.
-static constexpr uint32_t kEvent_GAIN_CHANGED_LOCAL = 1u << 12;
-static constexpr uint32_t kEvent_CONFIG_SAVED_LOCAL = 1u << 13;
-static constexpr uint32_t kEvent_CONFIG_RESET_LOCAL = 1u << 14;
 
 struct Field {
     const char*           name;
@@ -226,7 +222,7 @@ bool BalanceTuner::trySet(const String& key, float value, String& err) {
     }
 
     _publish(spare);
-    _pendingEvents.fetch_or(kEvent_GAIN_CHANGED_LOCAL, std::memory_order_acq_rel);
+    _pendingEvents.fetch_or(kEvent_GAIN_CHANGED, std::memory_order_acq_rel);
     return true;
 }
 
@@ -234,7 +230,7 @@ bool BalanceTuner::saveNvs() {
     const BalanceConfig* live = _slot.load(std::memory_order_acquire);
     if (!live) return false;
     BalanceConfigStorage::save(*live);
-    _pendingEvents.fetch_or(kEvent_CONFIG_SAVED_LOCAL, std::memory_order_acq_rel);
+    _pendingEvents.fetch_or(kEvent_CONFIG_SAVED, std::memory_order_acq_rel);
     return true;
 }
 
@@ -242,7 +238,7 @@ void BalanceTuner::resetToDefaults() {
     BalanceConfig* spare = _spare();
     *spare = RobotConstants::balanceConfig();
     _publish(spare);
-    _pendingEvents.fetch_or(kEvent_CONFIG_RESET_LOCAL, std::memory_order_acq_rel);
+    _pendingEvents.fetch_or(kEvent_CONFIG_RESET, std::memory_order_acq_rel);
 }
 
 BalanceConfig BalanceTuner::snapshot() const {
