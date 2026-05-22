@@ -475,6 +475,8 @@ export default function TunePage() {
         </div>
       )}
 
+      <TelemetryPanel host={host} />
+
       <JoystickPanel
         wsState={wsState}
         armed={armState === "armed"}
@@ -725,6 +727,495 @@ function MaxField({
         className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm font-mono text-zinc-100 outline-none focus:border-blue-500"
       />
     </label>
+  );
+}
+
+type TelemetrySnap = {
+  seq: number;
+  t_us: number;
+  dt_measured: number;
+  dt_used: number;
+  cmd_vx_raw: number;
+  cmd_vy_raw: number;
+  cmd_omega_raw: number;
+  cmd_vx: number;
+  cmd_vy: number;
+  cmd_omega: number;
+  cmd_age_ms: number;
+  quat_w: number;
+  quat_x: number;
+  quat_y: number;
+  quat_z: number;
+  accel_x: number;
+  accel_y: number;
+  accel_z: number;
+  gyro_x_raw: number;
+  gyro_y_raw: number;
+  gyro_z_raw: number;
+  gx: number;
+  gy: number;
+  gz: number;
+  tilt_mag_sin: number;
+  pitch_actual: number;
+  roll_actual: number;
+  gyro_pitch_rate: number;
+  gyro_roll_rate: number;
+  pitch_target: number;
+  roll_target: number;
+  pitch_err: number;
+  pitch_P: number;
+  pitch_I: number;
+  pitch_D: number;
+  pitch_out_raw: number;
+  pitch_out: number;
+  roll_err: number;
+  roll_P: number;
+  roll_I: number;
+  roll_D: number;
+  roll_out_raw: number;
+  roll_out: number;
+  body_vx_cmd: number;
+  body_vy_cmd: number;
+  body_omega_cmd: number;
+  wheel_target_rpm_0: number;
+  wheel_target_rpm_1: number;
+  wheel_target_rpm_2: number;
+  wheel_meas_rpm_0: number;
+  wheel_meas_rpm_1: number;
+  wheel_meas_rpm_2: number;
+  wheel_P_0: number;
+  wheel_P_1: number;
+  wheel_P_2: number;
+  wheel_I_0: number;
+  wheel_I_1: number;
+  wheel_I_2: number;
+  wheel_D_0: number;
+  wheel_D_1: number;
+  wheel_D_2: number;
+  wheel_out_0: number;
+  wheel_out_1: number;
+  wheel_out_2: number;
+  pitch_Kp: number;
+  pitch_Ki: number;
+  pitch_Kd: number;
+  roll_Kp: number;
+  roll_Ki: number;
+  roll_Kd: number;
+  pitch_deadband: number;
+  roll_deadband: number;
+  max_output_velocity: number;
+  envelope_enter_sin: number;
+  envelope_exit_sin: number;
+  gyro_pitch_sign: number;
+  gyro_roll_sign: number;
+  tilt_per_velocity: number;
+  max_tilt_setpoint: number;
+  armed_state: number;
+  in_fault: number;
+  cmd_stale: number;
+  event_flags: number;
+};
+
+const EVENT_BITS: { bit: number; name: string }[] = [
+  { bit: 0, name: "ARMED_EDGE" },
+  { bit: 1, name: "DISARMED_EDGE" },
+  { bit: 2, name: "KILLED_EDGE" },
+  { bit: 3, name: "KILL_CLEARED" },
+  { bit: 4, name: "FAULT_ENTER" },
+  { bit: 5, name: "FAULT_EXIT" },
+  { bit: 6, name: "PITCH_DEADBAND_RESET" },
+  { bit: 7, name: "ROLL_DEADBAND_RESET" },
+  { bit: 8, name: "PITCH_I_SATURATED" },
+  { bit: 9, name: "ROLL_I_SATURATED" },
+  { bit: 10, name: "PITCH_OUT_SATURATED" },
+  { bit: 11, name: "ROLL_OUT_SATURATED" },
+  { bit: 12, name: "GAIN_CHANGED" },
+  { bit: 13, name: "CONFIG_SAVED" },
+  { bit: 14, name: "CONFIG_RESET" },
+  { bit: 15, name: "STEP_INJECTED" },
+];
+
+const ARMED_LABEL: Record<number, string> = {
+  0: "disarmed",
+  1: "armed",
+  2: "killed",
+};
+
+function fmt(n: number, digits = 3): string {
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(digits);
+}
+
+function TelemetryPanel({ host }: { host: string }) {
+  const [snap, setSnap] = useState<TelemetrySnap | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [chipHz, setChipHz] = useState(0);
+  const [accumEvents, setAccumEvents] = useState(0);
+  const lastSeqRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (paused) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      try {
+        const r = await fetch(`http://${host}/telemetry/latest`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = (await r.json()) as TelemetrySnap;
+        if (cancelled) return;
+        const now = performance.now();
+        if (lastSeqRef.current !== null && lastTimeRef.current !== null) {
+          const dseq = data.seq - lastSeqRef.current;
+          const dt = (now - lastTimeRef.current) / 1000;
+          if (dt > 0 && dseq >= 0) setChipHz(dseq / dt);
+        }
+        lastSeqRef.current = data.seq;
+        lastTimeRef.current = now;
+        setSnap(data);
+        setAccumEvents((a) => a | data.event_flags);
+        setErr(null);
+      } catch (e: unknown) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) timer = setTimeout(tick, 100);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [host, paused]);
+
+  const armedClass =
+    snap?.armed_state === 1
+      ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+      : snap?.armed_state === 2
+        ? "bg-red-950 text-red-300 border-red-800 animate-pulse"
+        : "bg-zinc-800 text-zinc-400 border-zinc-700";
+
+  return (
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-xs uppercase tracking-wider text-zinc-500">
+          Telemetry
+        </h2>
+        <span
+          className={`rounded-md border px-2 py-0.5 text-xs font-mono ${armedClass}`}
+        >
+          {snap ? (ARMED_LABEL[snap.armed_state] ?? "?") : "—"}
+        </span>
+        {snap?.in_fault ? (
+          <span className="rounded-md border border-red-800 bg-red-950 px-2 py-0.5 text-xs font-mono text-red-300">
+            in_fault
+          </span>
+        ) : (
+          <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-xs font-mono text-zinc-600">
+            fault_ok
+          </span>
+        )}
+        {snap?.cmd_stale ? (
+          <span className="rounded-md border border-amber-800 bg-amber-950 px-2 py-0.5 text-xs font-mono text-amber-300">
+            cmd_stale
+          </span>
+        ) : (
+          <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-xs font-mono text-zinc-600">
+            cmd_fresh
+          </span>
+        )}
+        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-400">
+          seq #{snap?.seq ?? 0}
+        </span>
+        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-400">
+          dt {snap ? (snap.dt_measured * 1000).toFixed(2) : "—"} ms
+        </span>
+        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-400">
+          chip {chipHz.toFixed(0)} Hz
+        </span>
+        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-400">
+          cmd_age {snap?.cmd_age_ms ?? 0} ms
+        </span>
+        <button
+          onClick={() => setPaused((p) => !p)}
+          className="ml-auto rounded-md border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-100"
+        >
+          {paused ? "Resume" : "Pause"}
+        </button>
+      </div>
+
+      {err && (
+        <div className="mb-3 rounded-md border border-red-800 bg-red-950 px-3 py-1.5 text-xs font-mono text-red-300">
+          {err}
+        </div>
+      )}
+
+      {!snap ? (
+        <p className="text-xs text-zinc-500">Waiting for /telemetry/latest…</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <SubGroup title="Pitch axis">
+            <KV label="target" value={fmt(snap.pitch_target, 4)} unit="rad" />
+            <KV label="actual" value={fmt(snap.pitch_actual, 4)} unit="rad" />
+            <KV label="err" value={fmt(snap.pitch_err, 4)} unit="rad" />
+            <KV label="gyro_rate" value={fmt(snap.gyro_pitch_rate, 4)} unit="rad/s" />
+            <KV label="P" value={fmt(snap.pitch_P, 4)} />
+            <KV label="I" value={fmt(snap.pitch_I, 4)} />
+            <KV label="D" value={fmt(snap.pitch_D, 4)} />
+            <KV label="out_raw" value={fmt(snap.pitch_out_raw, 4)} />
+            <KV label="out" value={fmt(snap.pitch_out, 4)} unit="m/s" />
+          </SubGroup>
+
+          <SubGroup title="Roll axis">
+            <KV label="target" value={fmt(snap.roll_target, 4)} unit="rad" />
+            <KV label="actual" value={fmt(snap.roll_actual, 4)} unit="rad" />
+            <KV label="err" value={fmt(snap.roll_err, 4)} unit="rad" />
+            <KV label="gyro_rate" value={fmt(snap.gyro_roll_rate, 4)} unit="rad/s" />
+            <KV label="P" value={fmt(snap.roll_P, 4)} />
+            <KV label="I" value={fmt(snap.roll_I, 4)} />
+            <KV label="D" value={fmt(snap.roll_D, 4)} />
+            <KV label="out_raw" value={fmt(snap.roll_out_raw, 4)} />
+            <KV label="out" value={fmt(snap.roll_out, 4)} unit="m/s" />
+          </SubGroup>
+
+          <SubGroup title="Body cmd → drivetrain">
+            <KV label="body_vx_cmd" value={fmt(snap.body_vx_cmd, 4)} unit="m/s" />
+            <KV label="body_vy_cmd" value={fmt(snap.body_vy_cmd, 4)} unit="m/s" />
+            <KV label="body_omega_cmd" value={fmt(snap.body_omega_cmd, 4)} unit="rad/s" />
+          </SubGroup>
+
+          <SubGroup title="Operator cmd (raw)">
+            <KV label="cmd_vx_raw" value={fmt(snap.cmd_vx_raw, 4)} unit="m/s" />
+            <KV label="cmd_vy_raw" value={fmt(snap.cmd_vy_raw, 4)} unit="m/s" />
+            <KV label="cmd_omega_raw" value={fmt(snap.cmd_omega_raw, 4)} unit="rad/s" />
+          </SubGroup>
+
+          <SubGroup title="Operator cmd (post-ramp)">
+            <KV label="cmd_vx" value={fmt(snap.cmd_vx, 4)} unit="m/s" />
+            <KV label="cmd_vy" value={fmt(snap.cmd_vy, 4)} unit="m/s" />
+            <KV label="cmd_omega" value={fmt(snap.cmd_omega, 4)} unit="rad/s" />
+            <KV label="cmd_age_ms" value={String(snap.cmd_age_ms)} unit="ms" />
+          </SubGroup>
+
+          <SubGroup title="Orientation">
+            <KV label="gx" value={fmt(snap.gx, 4)} />
+            <KV label="gy" value={fmt(snap.gy, 4)} />
+            <KV label="gz" value={fmt(snap.gz, 4)} />
+            <KV label="tilt_mag_sin" value={fmt(snap.tilt_mag_sin, 4)} />
+          </SubGroup>
+
+          <SubGroup title="IMU quaternion">
+            <KV label="quat_w" value={fmt(snap.quat_w, 4)} />
+            <KV label="quat_x" value={fmt(snap.quat_x, 4)} />
+            <KV label="quat_y" value={fmt(snap.quat_y, 4)} />
+            <KV label="quat_z" value={fmt(snap.quat_z, 4)} />
+          </SubGroup>
+
+          <SubGroup title="IMU accel (gravity-removed)">
+            <KV label="accel_x" value={fmt(snap.accel_x, 3)} unit="m/s²" />
+            <KV label="accel_y" value={fmt(snap.accel_y, 3)} unit="m/s²" />
+            <KV label="accel_z" value={fmt(snap.accel_z, 3)} unit="m/s²" />
+          </SubGroup>
+
+          <SubGroup title="IMU gyro (raw)">
+            <KV label="gyro_x_raw" value={fmt(snap.gyro_x_raw, 4)} unit="rad/s" />
+            <KV label="gyro_y_raw" value={fmt(snap.gyro_y_raw, 4)} unit="rad/s" />
+            <KV label="gyro_z_raw" value={fmt(snap.gyro_z_raw, 4)} unit="rad/s" />
+          </SubGroup>
+
+          <div className="lg:col-span-2 xl:col-span-3">
+            <SubGroup title="Wheels">
+              <WheelTable snap={snap} />
+            </SubGroup>
+          </div>
+
+          <SubGroup title="Live gains — pitch">
+            <KV label="pitch_Kp" value={fmt(snap.pitch_Kp, 4)} />
+            <KV label="pitch_Ki" value={fmt(snap.pitch_Ki, 4)} />
+            <KV label="pitch_Kd" value={fmt(snap.pitch_Kd, 4)} />
+            <KV label="pitch_deadband" value={fmt(snap.pitch_deadband, 4)} unit="rad" />
+          </SubGroup>
+
+          <SubGroup title="Live gains — roll">
+            <KV label="roll_Kp" value={fmt(snap.roll_Kp, 4)} />
+            <KV label="roll_Ki" value={fmt(snap.roll_Ki, 4)} />
+            <KV label="roll_Kd" value={fmt(snap.roll_Kd, 4)} />
+            <KV label="roll_deadband" value={fmt(snap.roll_deadband, 4)} unit="rad" />
+          </SubGroup>
+
+          <SubGroup title="Live config">
+            <KV label="max_output_velocity" value={fmt(snap.max_output_velocity, 3)} unit="m/s" />
+            <KV label="envelope_enter_sin" value={fmt(snap.envelope_enter_sin, 3)} />
+            <KV label="envelope_exit_sin" value={fmt(snap.envelope_exit_sin, 3)} />
+            <KV label="gyro_pitch_sign" value={fmt(snap.gyro_pitch_sign, 0)} />
+            <KV label="gyro_roll_sign" value={fmt(snap.gyro_roll_sign, 0)} />
+            <KV label="tilt_per_velocity" value={fmt(snap.tilt_per_velocity, 3)} unit="rad/(m/s)" />
+            <KV label="max_tilt_setpoint" value={fmt(snap.max_tilt_setpoint, 3)} unit="rad" />
+          </SubGroup>
+
+          <SubGroup title="Timing">
+            <KV label="seq" value={String(snap.seq)} />
+            <KV label="t_us" value={String(snap.t_us)} unit="µs" />
+            <KV label="dt_measured" value={fmt(snap.dt_measured * 1000, 3)} unit="ms" />
+            <KV label="dt_used" value={fmt(snap.dt_used * 1000, 3)} unit="ms" />
+          </SubGroup>
+
+          <div className="lg:col-span-2 xl:col-span-3">
+            <SubGroup title="Events (this tick / accumulated)">
+              <EventBitsRow
+                label="this tick"
+                flags={snap.event_flags}
+              />
+              <EventBitsRow
+                label="accumulated"
+                flags={accumEvents}
+                onReset={() => setAccumEvents(0)}
+              />
+            </SubGroup>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SubGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      <h3 className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
+        {title}
+      </h3>
+      <div className="flex flex-col gap-1">{children}</div>
+    </div>
+  );
+}
+
+function KV({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 font-mono text-xs">
+      <span className="text-zinc-500 truncate">{label}</span>
+      <span className="flex items-baseline gap-1">
+        <span className="text-zinc-100 tabular-nums">{value}</span>
+        {unit && <span className="text-zinc-600">{unit}</span>}
+      </span>
+    </div>
+  );
+}
+
+function WheelTable({ snap }: { snap: TelemetrySnap }) {
+  const rows: { label: string; values: number[]; unit?: string; digits?: number }[] = [
+    {
+      label: "target_rpm",
+      values: [snap.wheel_target_rpm_0, snap.wheel_target_rpm_1, snap.wheel_target_rpm_2],
+      unit: "rpm",
+      digits: 2,
+    },
+    {
+      label: "meas_rpm",
+      values: [snap.wheel_meas_rpm_0, snap.wheel_meas_rpm_1, snap.wheel_meas_rpm_2],
+      unit: "rpm",
+      digits: 2,
+    },
+    {
+      label: "P",
+      values: [snap.wheel_P_0, snap.wheel_P_1, snap.wheel_P_2],
+      digits: 4,
+    },
+    {
+      label: "I",
+      values: [snap.wheel_I_0, snap.wheel_I_1, snap.wheel_I_2],
+      digits: 4,
+    },
+    {
+      label: "D",
+      values: [snap.wheel_D_0, snap.wheel_D_1, snap.wheel_D_2],
+      digits: 4,
+    },
+    {
+      label: "out",
+      values: [snap.wheel_out_0, snap.wheel_out_1, snap.wheel_out_2],
+      digits: 4,
+    },
+  ];
+  return (
+    <table className="w-full font-mono text-xs">
+      <thead>
+        <tr className="text-zinc-500">
+          <th className="text-left font-normal pb-1"> </th>
+          <th className="text-right font-normal pb-1">w0</th>
+          <th className="text-right font-normal pb-1">w1</th>
+          <th className="text-right font-normal pb-1">w2</th>
+          <th className="text-left font-normal pb-1 pl-2 text-zinc-600"> </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label}>
+            <td className="py-0.5 text-zinc-500">{r.label}</td>
+            {r.values.map((v, i) => (
+              <td key={i} className="py-0.5 text-right text-zinc-100 tabular-nums">
+                {fmt(v, r.digits ?? 3)}
+              </td>
+            ))}
+            <td className="py-0.5 pl-2 text-zinc-600">{r.unit ?? ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function EventBitsRow({
+  label,
+  flags,
+  onReset,
+}: {
+  label: string;
+  flags: number;
+  onReset?: () => void;
+}) {
+  const active = EVENT_BITS.filter((e) => (flags & (1 << e.bit)) !== 0);
+  return (
+    <div className="flex items-start gap-2">
+      <span className="font-mono text-xs text-zinc-500 shrink-0 w-24">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {active.length === 0 ? (
+          <span className="font-mono text-xs text-zinc-700">—</span>
+        ) : (
+          active.map((e) => (
+            <span
+              key={e.bit}
+              className="rounded-sm border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-200"
+            >
+              {e.name}
+            </span>
+          ))
+        )}
+      </div>
+      {onReset && (
+        <button
+          onClick={onReset}
+          className="ml-auto text-[10px] text-zinc-500 hover:text-zinc-300 underline"
+        >
+          reset
+        </button>
+      )}
+    </div>
   );
 }
 
