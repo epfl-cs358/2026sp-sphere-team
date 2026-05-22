@@ -7,8 +7,3 @@
 
 - [Safety procedure : LiPo charging](https://github.com/user-attachments/files/27626973/LiPo_Charging_Guide.1.pdf)
 - [Safety procedure : Make the BB8 run](https://github.com/user-attachments/files/27644837/BB8_Safety_Procedures.pdf)
-
-## TODO:
-- Scale photo
-- Head circuit
-- Add magnet interference
