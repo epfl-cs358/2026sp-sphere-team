@@ -1,4 +1,5 @@
 #  Sphere Robot
+<img width="270" height="360" alt="image" src="https://github.com/user-attachments/assets/18845ebc-480a-4fe6-8ec8-26c3b3aed236" />
 
 A self-contained spherical robot inspired by BB-8. CS-358 final project, EPFL.
 
@@ -35,7 +36,6 @@ The robot:
 - [Stream Client + Relay (ports 3004/3005)](#stream-client-nextjs--port-3004--relay-port-3005)
 - [System Requirements](#system-requirements)
 - [WiFi Configuration](#wifi-configuration)
-- [Contributing](#contributing)
 
 ---
 
@@ -54,6 +54,8 @@ The robot:
 | BMS | [TODO: model] | Protects the LiPo |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 |
 | Magnets | Neodymium | [TODO: dimensions] — hold the head onto the sphere |
+
+<img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
 
 ### Mechanical Parts
 
@@ -77,6 +79,8 @@ The sphere is what the wheels push against, so it needs to be round, rigid, and 
 2. [TODO: slicer settings — layer height, walls, infill, supports]
 3. Sand the inside of each hemisphere until it feels smooth. This is what gives the wheels good grip.
 4. Only join the two hemispheres at the very end, once the chassis is in place inside.
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/adb60fc4-800e-4eca-8d98-96ad8852bf2b" />
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/286072ff-c11b-4bee-bda8-11f4af2c0cca" />
 
 ### Internal Chassis
 
@@ -86,6 +90,8 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 2. Assemble with screws. Test-fit the three motors first — don't glue or screw anything down until they fit cleanly.
 3. Mount the motors at 0°, 120°, and 240° looking from above (front, back-right, back-left).
 4. Mount the IMU as far as possible from the head magnets, and as low as possible in the chassis. A low center of mass keeps the robot stable.
+   
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/5e29a8db-70be-4f34-a20c-36a505c2a91f" />
 
 ### Motors and Wheels
 
@@ -133,6 +139,9 @@ LiPo ──┬── BMS ──┬── 12 V ──── L298N supply (×3)
        │                            └── BNO055 + encoders (via ESP32 3.3 V)
        └── status LED
 ```
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/1c49d482-4739-4087-a9eb-67f866b7c235" />
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/8a8ec03a-3ec9-492f-8c21-2e44acd8e312" />
+
 
 > Add bulk capacitance (≥ 1000 µF + 0.1 µF ceramic) on the 12 V rail near each L298N. Without it, the motors will brown out the ESP32 every time you accelerate.
 
@@ -153,6 +162,7 @@ The head holds onto the sphere with magnets only — there is no mechanical link
 1. Press neodymium magnets into the head's underside, alternating polarities.
 2. Press matching magnets onto the top of the chassis (which sits inside the sphere, just under the head).
 3. Metal ball-bearings in 3D-printed cages provide low-friction contact between the head and the top of the sphere.
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/ad9a2684-88a6-45ed-ae72-f0e17b670557" />
 
 ---
 
