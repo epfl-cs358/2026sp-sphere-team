@@ -651,3 +651,13 @@ Then fill in your credentials:
 ```
 
 > `wifi_credentials.h` is listed in `.gitignore` and will never be committed.
+
+## Team members
+
+| Name                | Email                                          |
+|---------------------|------------------------------------------------|
+| Alessandro Lombardini | alessandro.lombardini@epfl.ch                |
+| Tristan Compain     | tristan.compain@epfl.ch                        |
+| Lucas Brunschwick   | lucas.brunschwick@epfl.ch                      |
+| Vincent du Fresne   | vincent.dufresnevonhohenesche@epfl.ch          |
+| Alban Thèves        | alban.theves@epfl.ch                           |
