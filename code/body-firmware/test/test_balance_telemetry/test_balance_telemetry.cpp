@@ -2,6 +2,7 @@
  * BB-8 Body Firmware — MIT 2026 SP, Team Sphere
  */
 
+#include <cmath>
 #include <cstdint>
 #include <type_traits>
 
@@ -51,10 +52,33 @@ void test_default_construction_zeros_all_fields() {
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.roll_actual);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.gyro_pitch_rate);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.gyro_roll_rate);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.gyro_yaw_rate);
 
     // Setpoint shaping
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.pitch_target);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.roll_target);
+
+    // Heading hold — 16 zero-defaulted yaw/heading fields, plus heading_setpoint = NaN
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.heading_integrated);
+    TEST_ASSERT_TRUE(std::isnan(t.heading_setpoint));
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.heading_err);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.heading_P);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.omega_target_raw);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.omega_target);
+
+    // Yaw-rate inner PID
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_err);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_P);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_I);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_D);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_out);
+
+    // Yaw/heading gains + sign
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Kp);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Ki);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Kd);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.heading_Kp);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.gyro_yaw_sign);
 
     // Pitch PID
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.pitch_err);

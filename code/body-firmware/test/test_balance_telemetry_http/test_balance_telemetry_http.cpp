@@ -267,6 +267,24 @@ void test_header_text_matches_csv_order() {
     TEST_ASSERT_EQUAL_STRING(kExpectedHeader, body.c_str());
 }
 
+// 8. heading_setpoint defaults to NaN (sentinel for "not latched"); %g would
+//    emit literal 'nan' which is invalid JSON per RFC 7159. The serializer
+//    must emit JSON null instead so strict consumers (JSON.parse) don't choke.
+void test_appendSnapshotJson_emits_null_for_nan_heading_setpoint() {
+    BalanceTelemetryWs::publish(BalanceTelemetry{});
+    BalanceTelemetryWs::pumpOnce();
+
+    String s = BalanceTelemetryHttpApi::buildLatestJson();
+    std::string body(s.c_str(), s.length());
+
+    TEST_ASSERT_TRUE_MESSAGE(
+        body.find("\"heading_setpoint\":null") != std::string::npos,
+        "expected \"heading_setpoint\":null in JSON");
+    TEST_ASSERT_TRUE_MESSAGE(
+        body.find("\"heading_setpoint\":nan") == std::string::npos,
+        "JSON must not contain literal 'nan'");
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_latest_json_includes_every_column);
@@ -274,5 +292,6 @@ int main(int, char**) {
     RUN_TEST(test_stats_event_counts_reflect_published);
     RUN_TEST(test_schema_json_lists_all_columns);
     RUN_TEST(test_header_text_matches_csv_order);
+    RUN_TEST(test_appendSnapshotJson_emits_null_for_nan_heading_setpoint);
     return UNITY_END();
 }

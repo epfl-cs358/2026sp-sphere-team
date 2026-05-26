@@ -7,6 +7,7 @@
 #include <ESPAsyncWebServer.h>
 
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -129,7 +130,7 @@ constexpr Column kSchema[] = {
     {"roll_actual",         "float",  "rad",       "current roll"},
     {"gyro_pitch_rate",     "float",  "rad/s",     "pitch rate (signed, fed to D)"},
     {"gyro_roll_rate",      "float",  "rad/s",     "roll rate (signed, fed to D)"},
-    {"gyro_yaw_rate",       "float",  "rad/s",     "yaw rate (signed, fed to D)"},
+    {"gyro_yaw_rate",       "float",  "rad/s",     "yaw rate (signed, fed to inner yaw PID)"},
     {"pitch_target",        "float",  "rad",       "pitch setpoint from cmd"},
     {"roll_target",         "float",  "rad",       "roll setpoint from cmd"},
     {"heading_integrated",  "float",  "rad",       "integrated yaw heading"},
@@ -246,7 +247,11 @@ static_assert(kEventBitsCount == 21, "expected 21 event bits");
 // Returned via String& append so we can chain into arrays cheaply.
 void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
     char buf[2048];  // ~19 chars/field * 100, padded
-    std::snprintf(
+    // Split at heading_setpoint so we can emit JSON null when it's NaN
+    // (RFC 7159 forbids literal 'nan'). Every other float in the snapshot is
+    // finite by construction — only heading_setpoint carries a NaN sentinel
+    // (for "heading hold not latched"), so keep this minimal-touch.
+    int n = std::snprintf(
         buf, sizeof(buf),
         "{"
         "\"seq\":%u,\"t_us\":%u,\"dt_measured\":%g,\"dt_used\":%g,"
@@ -259,32 +264,7 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         "\"pitch_actual\":%g,\"roll_actual\":%g,"
         "\"gyro_pitch_rate\":%g,\"gyro_roll_rate\":%g,\"gyro_yaw_rate\":%g,"
         "\"pitch_target\":%g,\"roll_target\":%g,"
-        "\"heading_integrated\":%g,\"heading_setpoint\":%g,\"heading_err\":%g,\"heading_P\":%g,"
-        "\"omega_target_raw\":%g,\"omega_target\":%g,"
-        "\"pitch_err\":%g,\"pitch_P\":%g,\"pitch_I\":%g,\"pitch_D\":%g,"
-        "\"pitch_out_raw\":%g,\"pitch_out\":%g,"
-        "\"roll_err\":%g,\"roll_P\":%g,\"roll_I\":%g,\"roll_D\":%g,"
-        "\"roll_out_raw\":%g,\"roll_out\":%g,"
-        "\"yaw_rate_err\":%g,\"yaw_rate_P\":%g,\"yaw_rate_I\":%g,\"yaw_rate_D\":%g,"
-        "\"yaw_rate_out\":%g,"
-        "\"body_vx_cmd\":%g,\"body_vy_cmd\":%g,\"body_omega_cmd\":%g,"
-        "\"wheel_target_rpm_0\":%g,\"wheel_target_rpm_1\":%g,\"wheel_target_rpm_2\":%g,"
-        "\"wheel_meas_rpm_0\":%g,\"wheel_meas_rpm_1\":%g,\"wheel_meas_rpm_2\":%g,"
-        "\"wheel_P_0\":%g,\"wheel_P_1\":%g,\"wheel_P_2\":%g,"
-        "\"wheel_I_0\":%g,\"wheel_I_1\":%g,\"wheel_I_2\":%g,"
-        "\"wheel_D_0\":%g,\"wheel_D_1\":%g,\"wheel_D_2\":%g,"
-        "\"wheel_out_0\":%g,\"wheel_out_1\":%g,\"wheel_out_2\":%g,"
-        "\"pitch_Kp\":%g,\"pitch_Ki\":%g,\"pitch_Kd\":%g,"
-        "\"roll_Kp\":%g,\"roll_Ki\":%g,\"roll_Kd\":%g,"
-        "\"yaw_rate_Kp\":%g,\"yaw_rate_Ki\":%g,\"yaw_rate_Kd\":%g,\"heading_Kp\":%g,"
-        "\"pitch_deadband\":%g,\"roll_deadband\":%g,"
-        "\"max_output_velocity\":%g,"
-        "\"envelope_enter_sin\":%g,\"envelope_exit_sin\":%g,"
-        "\"gyro_pitch_sign\":%g,\"gyro_roll_sign\":%g,\"gyro_yaw_sign\":%g,"
-        "\"tilt_per_velocity\":%g,\"max_tilt_setpoint\":%g,"
-        "\"armed_state\":%u,\"in_fault\":%u,\"cmd_stale\":%u,"
-        "\"event_flags\":%u"
-        "}",
+        "\"heading_integrated\":%g,",
         static_cast<unsigned>(t.seq),
         static_cast<unsigned>(t.t_us),
         static_cast<double>(t.dt_measured),
@@ -327,8 +307,52 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         static_cast<double>(t.pitch_target),
         static_cast<double>(t.roll_target),
 
-        static_cast<double>(t.heading_integrated),
-        static_cast<double>(t.heading_setpoint),
+        static_cast<double>(t.heading_integrated));
+    if (n < 0 || n >= static_cast<int>(sizeof(buf))) {
+        // Truncated — best-effort: emit what we have and bail.
+        out += buf;
+        return;
+    }
+
+    // heading_setpoint: NaN -> JSON null (RFC 7159 compliance), else %g value.
+    int n2 = std::isnan(t.heading_setpoint)
+        ? std::snprintf(buf + n, sizeof(buf) - n, "\"heading_setpoint\":null,")
+        : std::snprintf(buf + n, sizeof(buf) - n, "\"heading_setpoint\":%g,",
+                        static_cast<double>(t.heading_setpoint));
+    if (n2 < 0 || n2 >= static_cast<int>(sizeof(buf) - n)) {
+        out += buf;
+        return;
+    }
+    n += n2;
+
+    std::snprintf(
+        buf + n, sizeof(buf) - n,
+        "\"heading_err\":%g,\"heading_P\":%g,"
+        "\"omega_target_raw\":%g,\"omega_target\":%g,"
+        "\"pitch_err\":%g,\"pitch_P\":%g,\"pitch_I\":%g,\"pitch_D\":%g,"
+        "\"pitch_out_raw\":%g,\"pitch_out\":%g,"
+        "\"roll_err\":%g,\"roll_P\":%g,\"roll_I\":%g,\"roll_D\":%g,"
+        "\"roll_out_raw\":%g,\"roll_out\":%g,"
+        "\"yaw_rate_err\":%g,\"yaw_rate_P\":%g,\"yaw_rate_I\":%g,\"yaw_rate_D\":%g,"
+        "\"yaw_rate_out\":%g,"
+        "\"body_vx_cmd\":%g,\"body_vy_cmd\":%g,\"body_omega_cmd\":%g,"
+        "\"wheel_target_rpm_0\":%g,\"wheel_target_rpm_1\":%g,\"wheel_target_rpm_2\":%g,"
+        "\"wheel_meas_rpm_0\":%g,\"wheel_meas_rpm_1\":%g,\"wheel_meas_rpm_2\":%g,"
+        "\"wheel_P_0\":%g,\"wheel_P_1\":%g,\"wheel_P_2\":%g,"
+        "\"wheel_I_0\":%g,\"wheel_I_1\":%g,\"wheel_I_2\":%g,"
+        "\"wheel_D_0\":%g,\"wheel_D_1\":%g,\"wheel_D_2\":%g,"
+        "\"wheel_out_0\":%g,\"wheel_out_1\":%g,\"wheel_out_2\":%g,"
+        "\"pitch_Kp\":%g,\"pitch_Ki\":%g,\"pitch_Kd\":%g,"
+        "\"roll_Kp\":%g,\"roll_Ki\":%g,\"roll_Kd\":%g,"
+        "\"yaw_rate_Kp\":%g,\"yaw_rate_Ki\":%g,\"yaw_rate_Kd\":%g,\"heading_Kp\":%g,"
+        "\"pitch_deadband\":%g,\"roll_deadband\":%g,"
+        "\"max_output_velocity\":%g,"
+        "\"envelope_enter_sin\":%g,\"envelope_exit_sin\":%g,"
+        "\"gyro_pitch_sign\":%g,\"gyro_roll_sign\":%g,\"gyro_yaw_sign\":%g,"
+        "\"tilt_per_velocity\":%g,\"max_tilt_setpoint\":%g,"
+        "\"armed_state\":%u,\"in_fault\":%u,\"cmd_stale\":%u,"
+        "\"event_flags\":%u"
+        "}",
         static_cast<double>(t.heading_err),
         static_cast<double>(t.heading_P),
 
