@@ -35,8 +35,7 @@ struct BalanceConfig {
     float gyroPitchSign;       // multiplies imu.gyro.y when computing pitch rate
     float gyroRollSign;        // multiplies imu.gyro.x when computing roll rate
 
-    // Yaw-rate PID (inner loop) and heading-hold P (outer loop). Defaults are
-    // 0 so controller behavior is unchanged until tuned in.
+    // Yaw-rate PID (inner loop) and heading-hold P (outer loop).
     float yawRateKp, yawRateKi, yawRateKd;
     float headingKp;
     float gyroYawSign;         // multiplies imu.gyro.z when computing yaw rate

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -295,6 +296,44 @@ void test_try_set_gyro_yaw_sign_negative_one_accepted() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.0f, live->gyroYawSign);
 }
 
+void test_try_set_gyro_pitch_sign_out_of_range_rejected() {
+    String err;
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroPitchSign"),  0.0f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroPitchSign"),  2.0f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroPitchSign"), -0.5f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroPitchSign"),
+                                     std::numeric_limits<float>::quiet_NaN(), err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroPitchSign"),
+                                     std::numeric_limits<float>::infinity(), err));
+}
+
+void test_try_set_gyro_pitch_sign_minus_one_accepted() {
+    String err;
+    bool ok = g_tuner.trySet(String("gyroPitchSign"), -1.0f, err);
+    TEST_ASSERT_TRUE(ok);
+    const BalanceConfig* live = g_tuner.slot().load();
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.0f, live->gyroPitchSign);
+}
+
+void test_try_set_gyro_roll_sign_out_of_range_rejected() {
+    String err;
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroRollSign"),  0.0f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroRollSign"),  2.0f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroRollSign"), -0.5f, err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroRollSign"),
+                                     std::numeric_limits<float>::quiet_NaN(), err));
+    TEST_ASSERT_FALSE(g_tuner.trySet(String("gyroRollSign"),
+                                     std::numeric_limits<float>::infinity(), err));
+}
+
+void test_try_set_gyro_roll_sign_minus_one_accepted() {
+    String err;
+    bool ok = g_tuner.trySet(String("gyroRollSign"), -1.0f, err);
+    TEST_ASSERT_TRUE(ok);
+    const BalanceConfig* live = g_tuner.slot().load();
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.0f, live->gyroRollSign);
+}
+
 void test_show_includes_new_yaw_keys() {
     g_tuner.handle(String("balance show"));
     TEST_ASSERT_TRUE(captured_contains("yawRateKp"));
@@ -346,6 +385,10 @@ int main() {
     RUN_TEST(test_try_set_heading_kp_negative_rejected);
     RUN_TEST(test_try_set_gyro_yaw_sign_out_of_range_rejected);
     RUN_TEST(test_try_set_gyro_yaw_sign_negative_one_accepted);
+    RUN_TEST(test_try_set_gyro_pitch_sign_out_of_range_rejected);
+    RUN_TEST(test_try_set_gyro_pitch_sign_minus_one_accepted);
+    RUN_TEST(test_try_set_gyro_roll_sign_out_of_range_rejected);
+    RUN_TEST(test_try_set_gyro_roll_sign_minus_one_accepted);
     RUN_TEST(test_show_includes_new_yaw_keys);
     RUN_TEST(test_show_pids_includes_yaw_gains_not_sign);
     RUN_TEST(test_multiple_events_or_together);

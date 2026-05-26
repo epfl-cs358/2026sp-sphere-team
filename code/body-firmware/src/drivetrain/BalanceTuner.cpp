@@ -28,8 +28,8 @@ struct Field {
 
 // Field-name → member-pointer table. Used for `balance show`, `balance set
 // <key> <value>`, and PIDs-only display. Negative-Kp guard applies only to
-// the gain fields (Kp/Ki/Kd, indices 2..7 below); other invariants are
-// checked separately in `_set`.
+// the gain fields (see `kPidFields`); other invariants are checked
+// separately in `_set`.
 constexpr Field kAllFields[] = {
     {"tiltPerVelocity",   &BalanceConfig::tiltPerVelocity},
     {"maxTiltSetpoint",   &BalanceConfig::maxTiltSetpoint},
@@ -210,8 +210,11 @@ bool BalanceTuner::trySet(const String& key, float value, String& err) {
         err = String("gain must be >= 0");
         return false;
     }
-    if (std::strcmp(f->name, "gyroYawSign") == 0 && value != 1.0f && value != -1.0f) {
-        err = String("gyroYawSign must be +1 or -1");
+    if ((std::strcmp(f->name, "gyroYawSign")   == 0 ||
+         std::strcmp(f->name, "gyroPitchSign") == 0 ||
+         std::strcmp(f->name, "gyroRollSign")  == 0) &&
+        value != 1.0f && value != -1.0f) {
+        err = String(f->name) + String(" must be +1 or -1");
         return false;
     }
     if ((std::strcmp(f->name, "pitchDeadband") == 0 ||
