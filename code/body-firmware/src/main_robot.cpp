@@ -312,6 +312,10 @@ void controlTask(void* /*arg*/) {
             const BalanceConfig snap = g_tuner.snapshot();
             t.pitch_Kp = snap.pitchKp; t.pitch_Ki = snap.pitchKi; t.pitch_Kd = snap.pitchKd;
             t.roll_Kp  = snap.rollKp;  t.roll_Ki  = snap.rollKi;  t.roll_Kd  = snap.rollKd;
+            t.yaw_rate_Kp = snap.yawRateKp;
+            t.yaw_rate_Ki = snap.yawRateKi;
+            t.yaw_rate_Kd = snap.yawRateKd;
+            t.heading_Kp  = snap.headingKp;
             t.pitch_deadband = snap.pitchDeadband;
             t.roll_deadband  = snap.rollDeadband;
             t.max_output_velocity = snap.maxOutputVelocity;
@@ -319,6 +323,7 @@ void controlTask(void* /*arg*/) {
             t.envelope_exit_sin   = snap.envelopeExitSin;
             t.gyro_pitch_sign     = snap.gyroPitchSign;
             t.gyro_roll_sign      = snap.gyroRollSign;
+            t.gyro_yaw_sign       = snap.gyroYawSign;
             t.tilt_per_velocity   = snap.tiltPerVelocity;
             t.max_tilt_setpoint   = snap.maxTiltSetpoint;
         }

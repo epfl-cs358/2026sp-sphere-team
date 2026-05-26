@@ -153,10 +153,101 @@ void test_header_line_matches_canonical_columns() {
     for (const char* p = h; *p; ++p) {
         if (*p == ',') ++commas;
     }
-    TEST_ASSERT_EQUAL_UINT32(82, commas);
+    // 83 original columns + 17 yaw/heading columns = 100 columns => 99 commas.
+    TEST_ASSERT_EQUAL_UINT32(99, commas);
     TEST_ASSERT_TRUE(std::strstr(h, "seq,t_us,dt_measured,dt_used") == h);
-    TEST_ASSERT_TRUE(std::strstr(h, "gyro_pitch_sign,gyro_roll_sign") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "gyro_pitch_sign,gyro_roll_sign,gyro_yaw_sign") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "gyro_yaw_rate") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "heading_integrated") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "heading_setpoint") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "heading_err") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "heading_P") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "omega_target_raw") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "omega_target") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_err") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_P") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_I") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_D") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_out") != nullptr);
     TEST_ASSERT_TRUE(std::strstr(h, "event_flags") != nullptr);
+}
+
+// Header column count must equal the number of comma-separated fields the
+// writeCsv() snprintf produces. The two MUST stay lock-step; drift would
+// break every downstream parser.
+void test_header_column_count_matches_csv_row() {
+    const char* h = BalanceTelemetryWs::headerLine();
+    std::size_t header_cols = 1;
+    for (const char* p = h; *p; ++p) {
+        if (*p == ',') ++header_cols;
+    }
+
+    BalanceTelemetry t{};
+    char line[1600];
+    int n = writeCsv(line, sizeof(line), t);
+    TEST_ASSERT_GREATER_THAN_INT(0, n);
+    TEST_ASSERT_LESS_THAN_size_t(sizeof(line), static_cast<std::size_t>(n));
+
+    std::size_t row_cols = 1;
+    for (const char* p = line; *p; ++p) {
+        if (*p == ',') ++row_cols;
+    }
+    TEST_ASSERT_EQUAL_UINT32(header_cols, row_cols);
+}
+
+// heading_setpoint default must be NaN (controller writes it that way when
+// hold is not latched). When the struct is freshly default-constructed and
+// passed through writeCsv, the column must show "nan" (lowercase).
+void test_default_heading_setpoint_serializes_as_nan() {
+    BalanceTelemetry t{};
+    char line[1600];
+    int n = writeCsv(line, sizeof(line), t);
+    TEST_ASSERT_GREATER_THAN_INT(0, n);
+    // Find the heading_setpoint column index from the header.
+    const char* h = BalanceTelemetryWs::headerLine();
+    std::string header(h);
+    std::size_t pos = header.find("heading_setpoint");
+    TEST_ASSERT_TRUE(pos != std::string::npos);
+    std::size_t col_idx = 0;
+    for (std::size_t i = 0; i < pos; ++i) {
+        if (header[i] == ',') ++col_idx;
+    }
+    // Extract the col_idx'th comma-separated value from `line`.
+    std::string row(line);
+    std::size_t start = 0;
+    for (std::size_t i = 0; i < col_idx; ++i) {
+        start = row.find(',', start) + 1;
+    }
+    std::size_t end = row.find(',', start);
+    std::string val = row.substr(start, end - start);
+    TEST_ASSERT_EQUAL_STRING("nan", val.c_str());
+}
+
+// Real gain values flow through writeCsv unchanged (used to verify the
+// controller writing cfg.yawRateKp ends up in the CSV row).
+void test_yaw_rate_kp_serializes_with_real_value() {
+    BalanceTelemetry t{};
+    t.yaw_rate_Kp = 0.5f;
+    char line[1600];
+    int n = writeCsv(line, sizeof(line), t);
+    TEST_ASSERT_GREATER_THAN_INT(0, n);
+    const char* h = BalanceTelemetryWs::headerLine();
+    std::string header(h);
+    std::size_t pos = header.find("yaw_rate_Kp");
+    TEST_ASSERT_TRUE(pos != std::string::npos);
+    std::size_t col_idx = 0;
+    for (std::size_t i = 0; i < pos; ++i) {
+        if (header[i] == ',') ++col_idx;
+    }
+    std::string row(line);
+    std::size_t start = 0;
+    for (std::size_t i = 0; i < col_idx; ++i) {
+        start = row.find(',', start) + 1;
+    }
+    std::size_t end = row.find(',', start);
+    std::string val = row.substr(start, end - start);
+    TEST_ASSERT_EQUAL_STRING("0.5", val.c_str());
 }
 
 void test_init_is_idempotent() {
@@ -182,6 +273,9 @@ int main(int, char**) {
     RUN_TEST(test_event_counter_ticks_on_matching_bit);
     RUN_TEST(test_event_counter_accumulates);
     RUN_TEST(test_header_line_matches_canonical_columns);
+    RUN_TEST(test_header_column_count_matches_csv_row);
+    RUN_TEST(test_default_heading_setpoint_serializes_as_nan);
+    RUN_TEST(test_yaw_rate_kp_serializes_with_real_value);
     RUN_TEST(test_init_is_idempotent);
     return UNITY_END();
 }

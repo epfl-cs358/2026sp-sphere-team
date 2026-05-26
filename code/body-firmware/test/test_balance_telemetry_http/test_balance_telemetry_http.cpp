@@ -45,8 +45,11 @@ std::size_t countSubstr(const std::string& haystack, const std::string& needle) 
     return n;
 }
 
-// Canonical 83-column CSV header — duplicated here (independent witness)
+// Canonical 100-column CSV header — duplicated here (independent witness)
 // so a drift in BalanceTelemetryHttpApi.cpp's header is caught structurally.
+// Order: original 83 + yaw/heading dynamic cluster (after roll PID block,
+// after roll_target, after gyro_roll_rate, after gyro_roll_sign) + gain
+// fields (yaw_rate_Kp/Ki/Kd, heading_Kp, gyro_yaw_sign).
 constexpr const char* kExpectedHeader =
     "seq,t_us,dt_measured,dt_used,"
     "cmd_vx_raw,cmd_vy_raw,cmd_omega_raw,"
@@ -56,10 +59,13 @@ constexpr const char* kExpectedHeader =
     "gyro_x_raw,gyro_y_raw,gyro_z_raw,"
     "gx,gy,gz,tilt_mag_sin,"
     "pitch_actual,roll_actual,"
-    "gyro_pitch_rate,gyro_roll_rate,"
+    "gyro_pitch_rate,gyro_roll_rate,gyro_yaw_rate,"
     "pitch_target,roll_target,"
+    "heading_integrated,heading_setpoint,heading_err,heading_P,"
+    "omega_target_raw,omega_target,"
     "pitch_err,pitch_P,pitch_I,pitch_D,pitch_out_raw,pitch_out,"
     "roll_err,roll_P,roll_I,roll_D,roll_out_raw,roll_out,"
+    "yaw_rate_err,yaw_rate_P,yaw_rate_I,yaw_rate_D,yaw_rate_out,"
     "body_vx_cmd,body_vy_cmd,body_omega_cmd,"
     "wheel_target_rpm_0,wheel_target_rpm_1,wheel_target_rpm_2,"
     "wheel_meas_rpm_0,wheel_meas_rpm_1,wheel_meas_rpm_2,"
@@ -69,15 +75,16 @@ constexpr const char* kExpectedHeader =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
+    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
-    "gyro_pitch_sign,gyro_roll_sign,"
+    "gyro_pitch_sign,gyro_roll_sign,gyro_yaw_sign,"
     "tilt_per_velocity,max_tilt_setpoint,"
     "armed_state,in_fault,cmd_stale,"
     "event_flags";
 
-// The 83 column names, in order. Used to assert /telemetry/latest names
+// The 100 column names, in order. Used to assert /telemetry/latest names
 // every field and /telemetry/schema lists every column.
 constexpr const char* kAllColumns[] = {
     "seq", "t_us", "dt_measured", "dt_used",
@@ -88,10 +95,13 @@ constexpr const char* kAllColumns[] = {
     "gyro_x_raw", "gyro_y_raw", "gyro_z_raw",
     "gx", "gy", "gz", "tilt_mag_sin",
     "pitch_actual", "roll_actual",
-    "gyro_pitch_rate", "gyro_roll_rate",
+    "gyro_pitch_rate", "gyro_roll_rate", "gyro_yaw_rate",
     "pitch_target", "roll_target",
+    "heading_integrated", "heading_setpoint", "heading_err", "heading_P",
+    "omega_target_raw", "omega_target",
     "pitch_err", "pitch_P", "pitch_I", "pitch_D", "pitch_out_raw", "pitch_out",
     "roll_err",  "roll_P",  "roll_I",  "roll_D",  "roll_out_raw",  "roll_out",
+    "yaw_rate_err", "yaw_rate_P", "yaw_rate_I", "yaw_rate_D", "yaw_rate_out",
     "body_vx_cmd", "body_vy_cmd", "body_omega_cmd",
     "wheel_target_rpm_0", "wheel_target_rpm_1", "wheel_target_rpm_2",
     "wheel_meas_rpm_0", "wheel_meas_rpm_1", "wheel_meas_rpm_2",
@@ -101,10 +111,11 @@ constexpr const char* kAllColumns[] = {
     "wheel_out_0", "wheel_out_1", "wheel_out_2",
     "pitch_Kp", "pitch_Ki", "pitch_Kd",
     "roll_Kp",  "roll_Ki",  "roll_Kd",
+    "yaw_rate_Kp", "yaw_rate_Ki", "yaw_rate_Kd", "heading_Kp",
     "pitch_deadband", "roll_deadband",
     "max_output_velocity",
     "envelope_enter_sin", "envelope_exit_sin",
-    "gyro_pitch_sign", "gyro_roll_sign",
+    "gyro_pitch_sign", "gyro_roll_sign", "gyro_yaw_sign",
     "tilt_per_velocity", "max_tilt_setpoint",
     "armed_state", "in_fault", "cmd_stale",
     "event_flags",
@@ -113,14 +124,18 @@ constexpr const char* kAllColumns[] = {
 constexpr std::size_t kAllColumnsCount =
     sizeof(kAllColumns) / sizeof(kAllColumns[0]);
 
-constexpr const char* kAllEventNames[16] = {
+constexpr const char* kAllEventNames[21] = {
     "ARMED_EDGE", "DISARMED_EDGE", "KILLED_EDGE", "KILL_CLEARED",
     "FAULT_ENTER", "FAULT_EXIT",
     "PITCH_DEADBAND_RESET", "ROLL_DEADBAND_RESET",
     "PITCH_I_SATURATED", "ROLL_I_SATURATED",
     "PITCH_OUT_SATURATED", "ROLL_OUT_SATURATED",
     "GAIN_CHANGED", "CONFIG_SAVED", "CONFIG_RESET", "STEP_INJECTED",
+    "YAW_RATE_I_SATURATED", "YAW_RATE_OUT_SATURATED",
+    "HEADING_LATCHED", "YAW_SPIN_RECOVERY", "IMU_INVALID",
 };
+constexpr std::size_t kAllEventNamesCount =
+    sizeof(kAllEventNames) / sizeof(kAllEventNames[0]);
 
 }  // namespace
 
@@ -180,8 +195,8 @@ void test_stats_json_shape() {
     TEST_ASSERT_TRUE(body.find("\"max\"") != std::string::npos);
     TEST_ASSERT_TRUE(body.find("\"jitter\"") != std::string::npos);
 
-    // All 16 event names.
-    for (std::size_t i = 0; i < 16; ++i) {
+    // All 21 event names.
+    for (std::size_t i = 0; i < kAllEventNamesCount; ++i) {
         std::string key = std::string("\"") + kAllEventNames[i] + "\"";
         if (body.find(key) == std::string::npos) {
             char msg[128];
@@ -228,12 +243,12 @@ void test_schema_json_lists_all_columns() {
             TEST_FAIL_MESSAGE(msg);
         }
     }
-    // 83 desc entries (one per column).
+    // 100 desc entries (one per column).
     std::size_t descs = countSubstr(body, "\"desc\"");
-    TEST_ASSERT_EQUAL_UINT32(83, descs);
+    TEST_ASSERT_EQUAL_UINT32(100, descs);
 
-    // All 16 event_bits decoded.
-    for (std::size_t i = 0; i < 16; ++i) {
+    // All 21 event_bits decoded.
+    for (std::size_t i = 0; i < kAllEventNamesCount; ++i) {
         std::string key = std::string("\"") + kAllEventNames[i] + "\"";
         if (body.find(key) == std::string::npos) {
             char msg[160];

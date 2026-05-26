@@ -64,10 +64,13 @@ constexpr const char* kHttpHeaderLine =
     "gyro_x_raw,gyro_y_raw,gyro_z_raw,"
     "gx,gy,gz,tilt_mag_sin,"
     "pitch_actual,roll_actual,"
-    "gyro_pitch_rate,gyro_roll_rate,"
+    "gyro_pitch_rate,gyro_roll_rate,gyro_yaw_rate,"
     "pitch_target,roll_target,"
+    "heading_integrated,heading_setpoint,heading_err,heading_P,"
+    "omega_target_raw,omega_target,"
     "pitch_err,pitch_P,pitch_I,pitch_D,pitch_out_raw,pitch_out,"
     "roll_err,roll_P,roll_I,roll_D,roll_out_raw,roll_out,"
+    "yaw_rate_err,yaw_rate_P,yaw_rate_I,yaw_rate_D,yaw_rate_out,"
     "body_vx_cmd,body_vy_cmd,body_omega_cmd,"
     "wheel_target_rpm_0,wheel_target_rpm_1,wheel_target_rpm_2,"
     "wheel_meas_rpm_0,wheel_meas_rpm_1,wheel_meas_rpm_2,"
@@ -77,10 +80,11 @@ constexpr const char* kHttpHeaderLine =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
+    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
-    "gyro_pitch_sign,gyro_roll_sign,"
+    "gyro_pitch_sign,gyro_roll_sign,gyro_yaw_sign,"
     "tilt_per_velocity,max_tilt_setpoint,"
     "armed_state,in_fault,cmd_stale,"
     "event_flags";
@@ -125,8 +129,15 @@ constexpr Column kSchema[] = {
     {"roll_actual",         "float",  "rad",       "current roll"},
     {"gyro_pitch_rate",     "float",  "rad/s",     "pitch rate (signed, fed to D)"},
     {"gyro_roll_rate",      "float",  "rad/s",     "roll rate (signed, fed to D)"},
+    {"gyro_yaw_rate",       "float",  "rad/s",     "yaw rate (signed, fed to D)"},
     {"pitch_target",        "float",  "rad",       "pitch setpoint from cmd"},
     {"roll_target",         "float",  "rad",       "roll setpoint from cmd"},
+    {"heading_integrated",  "float",  "rad",       "integrated yaw heading"},
+    {"heading_setpoint",    "float",  "rad",       "held heading (NaN if unlatched)"},
+    {"heading_err",         "float",  "rad",       "heading_setpoint - heading_integrated"},
+    {"heading_P",           "float",  "",          "heading P-term contribution"},
+    {"omega_target_raw",    "float",  "rad/s",     "outer heading P output pre-LP"},
+    {"omega_target",        "float",  "rad/s",     "yaw-rate setpoint into inner PID"},
     {"pitch_err",           "float",  "rad",       "pitch_target - pitch_actual"},
     {"pitch_P",             "float",  "",          "pitch P term"},
     {"pitch_I",             "float",  "",          "pitch I term (accumulator)"},
@@ -139,6 +150,11 @@ constexpr Column kSchema[] = {
     {"roll_D",              "float",  "",          "roll D term"},
     {"roll_out_raw",        "float",  "",          "roll PID sum pre-clamp"},
     {"roll_out",            "float",  "m/s",       "roll PID post-clamp"},
+    {"yaw_rate_err",        "float",  "rad/s",     "omega_target - gyro_yaw_rate"},
+    {"yaw_rate_P",          "float",  "",          "yaw-rate P term"},
+    {"yaw_rate_I",          "float",  "",          "yaw-rate I term (accumulator)"},
+    {"yaw_rate_D",          "float",  "",          "yaw-rate D term"},
+    {"yaw_rate_out",        "float",  "rad/s",     "inner yaw PID post-clamp"},
     {"body_vx_cmd",         "float",  "m/s",       "body-frame vx to drivetrain"},
     {"body_vy_cmd",         "float",  "m/s",       "body-frame vy to drivetrain"},
     {"body_omega_cmd",      "float",  "rad/s",     "body-frame omega to drivetrain"},
@@ -166,6 +182,10 @@ constexpr Column kSchema[] = {
     {"roll_Kp",             "float",  "",          "live roll P gain"},
     {"roll_Ki",             "float",  "",          "live roll I gain"},
     {"roll_Kd",             "float",  "",          "live roll D gain"},
+    {"yaw_rate_Kp",         "float",  "",          "live yaw-rate P gain"},
+    {"yaw_rate_Ki",         "float",  "",          "live yaw-rate I gain"},
+    {"yaw_rate_Kd",         "float",  "",          "live yaw-rate D gain"},
+    {"heading_Kp",          "float",  "",          "live heading P gain"},
     {"pitch_deadband",      "float",  "rad",       "pitch error deadband"},
     {"roll_deadband",       "float",  "rad",       "roll error deadband"},
     {"max_output_velocity", "float",  "m/s",       "PID output clamp magnitude"},
@@ -173,6 +193,7 @@ constexpr Column kSchema[] = {
     {"envelope_exit_sin",   "float",  "",          "fault exit threshold"},
     {"gyro_pitch_sign",     "float",  "",          "+1/-1 gyro pitch sign"},
     {"gyro_roll_sign",      "float",  "",          "+1/-1 gyro roll sign"},
+    {"gyro_yaw_sign",       "float",  "",          "+1/-1 gyro yaw sign"},
     {"tilt_per_velocity",   "float",  "rad/(m/s)", "tilt request per velocity"},
     {"max_tilt_setpoint",   "float",  "rad",       "max abs tilt target"},
     {"armed_state",         "uint8",  "",          "0=Disarmed 1=Armed 2=Killed"},
@@ -181,7 +202,7 @@ constexpr Column kSchema[] = {
     {"event_flags",         "uint32", "bitfield",  "see event_bits decode"},
 };
 constexpr std::size_t kSchemaCount = sizeof(kSchema) / sizeof(kSchema[0]);
-static_assert(kSchemaCount == 83, "schema must list all 83 CSV columns");
+static_assert(kSchemaCount == 100, "schema must list all 100 CSV columns");
 
 // Event-bit decode table — name + bit value. Order matches kEvent_* bit
 // positions; emission order in the JSON matches BalanceTelemetryWs counters.
@@ -207,10 +228,15 @@ constexpr EventBit kEventBits[] = {
     {"CONFIG_SAVED",         kEvent_CONFIG_SAVED},
     {"CONFIG_RESET",         kEvent_CONFIG_RESET},
     {"STEP_INJECTED",        kEvent_STEP_INJECTED},
+    {"YAW_RATE_I_SATURATED",   kEvent_YAW_RATE_I_SATURATED},
+    {"YAW_RATE_OUT_SATURATED", kEvent_YAW_RATE_OUT_SATURATED},
+    {"HEADING_LATCHED",        kEvent_HEADING_LATCHED},
+    {"YAW_SPIN_RECOVERY",      kEvent_YAW_SPIN_RECOVERY},
+    {"IMU_INVALID",            kEvent_IMU_INVALID},
 };
 constexpr std::size_t kEventBitsCount =
     sizeof(kEventBits) / sizeof(kEventBits[0]);
-static_assert(kEventBitsCount == 16, "expected 16 event bits");
+static_assert(kEventBitsCount == 21, "expected 21 event bits");
 
 // --- JSON formatting -------------------------------------------------------
 // Hand-rolled per BalanceHttpApi convention (no ArduinoJson). %g keeps the
@@ -219,7 +245,7 @@ static_assert(kEventBitsCount == 16, "expected 16 event bits");
 // Format one BalanceTelemetry as an inline JSON object (no trailing comma).
 // Returned via String& append so we can chain into arrays cheaply.
 void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
-    char buf[1600];  // ~19 chars/field * 83, padded
+    char buf[2048];  // ~19 chars/field * 100, padded
     std::snprintf(
         buf, sizeof(buf),
         "{"
@@ -231,12 +257,16 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         "\"gyro_x_raw\":%g,\"gyro_y_raw\":%g,\"gyro_z_raw\":%g,"
         "\"gx\":%g,\"gy\":%g,\"gz\":%g,\"tilt_mag_sin\":%g,"
         "\"pitch_actual\":%g,\"roll_actual\":%g,"
-        "\"gyro_pitch_rate\":%g,\"gyro_roll_rate\":%g,"
+        "\"gyro_pitch_rate\":%g,\"gyro_roll_rate\":%g,\"gyro_yaw_rate\":%g,"
         "\"pitch_target\":%g,\"roll_target\":%g,"
+        "\"heading_integrated\":%g,\"heading_setpoint\":%g,\"heading_err\":%g,\"heading_P\":%g,"
+        "\"omega_target_raw\":%g,\"omega_target\":%g,"
         "\"pitch_err\":%g,\"pitch_P\":%g,\"pitch_I\":%g,\"pitch_D\":%g,"
         "\"pitch_out_raw\":%g,\"pitch_out\":%g,"
         "\"roll_err\":%g,\"roll_P\":%g,\"roll_I\":%g,\"roll_D\":%g,"
         "\"roll_out_raw\":%g,\"roll_out\":%g,"
+        "\"yaw_rate_err\":%g,\"yaw_rate_P\":%g,\"yaw_rate_I\":%g,\"yaw_rate_D\":%g,"
+        "\"yaw_rate_out\":%g,"
         "\"body_vx_cmd\":%g,\"body_vy_cmd\":%g,\"body_omega_cmd\":%g,"
         "\"wheel_target_rpm_0\":%g,\"wheel_target_rpm_1\":%g,\"wheel_target_rpm_2\":%g,"
         "\"wheel_meas_rpm_0\":%g,\"wheel_meas_rpm_1\":%g,\"wheel_meas_rpm_2\":%g,"
@@ -246,10 +276,11 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         "\"wheel_out_0\":%g,\"wheel_out_1\":%g,\"wheel_out_2\":%g,"
         "\"pitch_Kp\":%g,\"pitch_Ki\":%g,\"pitch_Kd\":%g,"
         "\"roll_Kp\":%g,\"roll_Ki\":%g,\"roll_Kd\":%g,"
+        "\"yaw_rate_Kp\":%g,\"yaw_rate_Ki\":%g,\"yaw_rate_Kd\":%g,\"heading_Kp\":%g,"
         "\"pitch_deadband\":%g,\"roll_deadband\":%g,"
         "\"max_output_velocity\":%g,"
         "\"envelope_enter_sin\":%g,\"envelope_exit_sin\":%g,"
-        "\"gyro_pitch_sign\":%g,\"gyro_roll_sign\":%g,"
+        "\"gyro_pitch_sign\":%g,\"gyro_roll_sign\":%g,\"gyro_yaw_sign\":%g,"
         "\"tilt_per_velocity\":%g,\"max_tilt_setpoint\":%g,"
         "\"armed_state\":%u,\"in_fault\":%u,\"cmd_stale\":%u,"
         "\"event_flags\":%u"
@@ -291,9 +322,18 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
 
         static_cast<double>(t.gyro_pitch_rate),
         static_cast<double>(t.gyro_roll_rate),
+        static_cast<double>(t.gyro_yaw_rate),
 
         static_cast<double>(t.pitch_target),
         static_cast<double>(t.roll_target),
+
+        static_cast<double>(t.heading_integrated),
+        static_cast<double>(t.heading_setpoint),
+        static_cast<double>(t.heading_err),
+        static_cast<double>(t.heading_P),
+
+        static_cast<double>(t.omega_target_raw),
+        static_cast<double>(t.omega_target),
 
         static_cast<double>(t.pitch_err),
         static_cast<double>(t.pitch_P),
@@ -308,6 +348,12 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         static_cast<double>(t.roll_D),
         static_cast<double>(t.roll_out_raw),
         static_cast<double>(t.roll_out),
+
+        static_cast<double>(t.yaw_rate_err),
+        static_cast<double>(t.yaw_rate_P),
+        static_cast<double>(t.yaw_rate_I),
+        static_cast<double>(t.yaw_rate_D),
+        static_cast<double>(t.yaw_rate_out),
 
         static_cast<double>(t.body_vx_cmd),
         static_cast<double>(t.body_vy_cmd),
@@ -345,6 +391,11 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         static_cast<double>(t.roll_Ki),
         static_cast<double>(t.roll_Kd),
 
+        static_cast<double>(t.yaw_rate_Kp),
+        static_cast<double>(t.yaw_rate_Ki),
+        static_cast<double>(t.yaw_rate_Kd),
+        static_cast<double>(t.heading_Kp),
+
         static_cast<double>(t.pitch_deadband),
         static_cast<double>(t.roll_deadband),
 
@@ -355,6 +406,7 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
 
         static_cast<double>(t.gyro_pitch_sign),
         static_cast<double>(t.gyro_roll_sign),
+        static_cast<double>(t.gyro_yaw_sign),
 
         static_cast<double>(t.tilt_per_velocity),
         static_cast<double>(t.max_tilt_setpoint),

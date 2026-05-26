@@ -76,6 +76,10 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.roll_Kp  = cfg.rollKp;
     _lastTelemetry.roll_Ki  = cfg.rollKi;
     _lastTelemetry.roll_Kd  = cfg.rollKd;
+    _lastTelemetry.yaw_rate_Kp = cfg.yawRateKp;
+    _lastTelemetry.yaw_rate_Ki = cfg.yawRateKi;
+    _lastTelemetry.yaw_rate_Kd = cfg.yawRateKd;
+    _lastTelemetry.heading_Kp  = cfg.headingKp;
     _lastTelemetry.pitch_deadband      = cfg.pitchDeadband;
     _lastTelemetry.roll_deadband       = cfg.rollDeadband;
     _lastTelemetry.max_output_velocity = cfg.maxOutputVelocity;
@@ -83,6 +87,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.envelope_exit_sin   = cfg.envelopeExitSin;
     _lastTelemetry.gyro_pitch_sign     = cfg.gyroPitchSign;
     _lastTelemetry.gyro_roll_sign      = cfg.gyroRollSign;
+    _lastTelemetry.gyro_yaw_sign       = cfg.gyroYawSign;
     _lastTelemetry.tilt_per_velocity   = cfg.tiltPerVelocity;
     _lastTelemetry.max_tilt_setpoint   = cfg.maxTiltSetpoint;
 

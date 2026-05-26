@@ -34,10 +34,13 @@ constexpr const char* kHeaderLine =
     "gyro_x_raw,gyro_y_raw,gyro_z_raw,"
     "gx,gy,gz,tilt_mag_sin,"
     "pitch_actual,roll_actual,"
-    "gyro_pitch_rate,gyro_roll_rate,"
+    "gyro_pitch_rate,gyro_roll_rate,gyro_yaw_rate,"
     "pitch_target,roll_target,"
+    "heading_integrated,heading_setpoint,heading_err,heading_P,"
+    "omega_target_raw,omega_target,"
     "pitch_err,pitch_P,pitch_I,pitch_D,pitch_out_raw,pitch_out,"
     "roll_err,roll_P,roll_I,roll_D,roll_out_raw,roll_out,"
+    "yaw_rate_err,yaw_rate_P,yaw_rate_I,yaw_rate_D,yaw_rate_out,"
     "body_vx_cmd,body_vy_cmd,body_omega_cmd,"
     "wheel_target_rpm_0,wheel_target_rpm_1,wheel_target_rpm_2,"
     "wheel_meas_rpm_0,wheel_meas_rpm_1,wheel_meas_rpm_2,"
@@ -47,10 +50,11 @@ constexpr const char* kHeaderLine =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
+    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
-    "gyro_pitch_sign,gyro_roll_sign,"
+    "gyro_pitch_sign,gyro_roll_sign,gyro_yaw_sign,"
     "tilt_per_velocity,max_tilt_setpoint,"
     "armed_state,in_fault,cmd_stale,"
     "event_flags";
@@ -95,10 +99,13 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         "%g,%g,%g,"
         "%g,%g,%g,%g,"
         "%g,%g,"
+        "%g,%g,%g,"
         "%g,%g,"
+        "%g,%g,%g,%g,"
         "%g,%g,"
         "%g,%g,%g,%g,%g,%g,"
         "%g,%g,%g,%g,%g,%g,"
+        "%g,%g,%g,%g,%g,"
         "%g,%g,%g,"
         "%g,%g,%g,"
         "%g,%g,%g,"
@@ -108,10 +115,11 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         "%g,%g,%g,"
         "%g,%g,%g,"
         "%g,%g,%g,"
+        "%g,%g,%g,%g,"
         "%g,%g,"
         "%g,"
         "%g,%g,"
-        "%g,%g,"
+        "%g,%g,%g,"
         "%g,%g,"
         "%u,%u,%u,"
         "%u",
@@ -152,9 +160,18 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
 
         static_cast<double>(t.gyro_pitch_rate),
         static_cast<double>(t.gyro_roll_rate),
+        static_cast<double>(t.gyro_yaw_rate),
 
         static_cast<double>(t.pitch_target),
         static_cast<double>(t.roll_target),
+
+        static_cast<double>(t.heading_integrated),
+        static_cast<double>(t.heading_setpoint),
+        static_cast<double>(t.heading_err),
+        static_cast<double>(t.heading_P),
+
+        static_cast<double>(t.omega_target_raw),
+        static_cast<double>(t.omega_target),
 
         static_cast<double>(t.pitch_err),
         static_cast<double>(t.pitch_P),
@@ -169,6 +186,12 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         static_cast<double>(t.roll_D),
         static_cast<double>(t.roll_out_raw),
         static_cast<double>(t.roll_out),
+
+        static_cast<double>(t.yaw_rate_err),
+        static_cast<double>(t.yaw_rate_P),
+        static_cast<double>(t.yaw_rate_I),
+        static_cast<double>(t.yaw_rate_D),
+        static_cast<double>(t.yaw_rate_out),
 
         static_cast<double>(t.body_vx_cmd),
         static_cast<double>(t.body_vy_cmd),
@@ -206,6 +229,11 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         static_cast<double>(t.roll_Ki),
         static_cast<double>(t.roll_Kd),
 
+        static_cast<double>(t.yaw_rate_Kp),
+        static_cast<double>(t.yaw_rate_Ki),
+        static_cast<double>(t.yaw_rate_Kd),
+        static_cast<double>(t.heading_Kp),
+
         static_cast<double>(t.pitch_deadband),
         static_cast<double>(t.roll_deadband),
 
@@ -216,6 +244,7 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
 
         static_cast<double>(t.gyro_pitch_sign),
         static_cast<double>(t.gyro_roll_sign),
+        static_cast<double>(t.gyro_yaw_sign),
 
         static_cast<double>(t.tilt_per_velocity),
         static_cast<double>(t.max_tilt_setpoint),

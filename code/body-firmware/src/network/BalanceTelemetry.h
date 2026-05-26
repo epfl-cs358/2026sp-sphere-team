@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 
 // Per-tick snapshot of the balancing controller's full input/intermediate/
 // output state, plus an event-flag bitfield latching cause→effect edges for
@@ -37,6 +38,11 @@ static constexpr uint32_t kEvent_GAIN_CHANGED         = 1u << 12;
 static constexpr uint32_t kEvent_CONFIG_SAVED         = 1u << 13;
 static constexpr uint32_t kEvent_CONFIG_RESET         = 1u << 14;
 static constexpr uint32_t kEvent_STEP_INJECTED        = 1u << 15;
+static constexpr uint32_t kEvent_YAW_RATE_I_SATURATED   = 1u << 16;
+static constexpr uint32_t kEvent_YAW_RATE_OUT_SATURATED = 1u << 17;
+static constexpr uint32_t kEvent_HEADING_LATCHED        = 1u << 18;
+static constexpr uint32_t kEvent_YAW_SPIN_RECOVERY      = 1u << 19;
+static constexpr uint32_t kEvent_IMU_INVALID            = 1u << 20;
 
 struct BalanceTelemetry {
     // --- timing ---
@@ -60,15 +66,30 @@ struct BalanceTelemetry {
     float    tilt_mag_sin;           // sqrt(gx^2 + gy^2)
     float    pitch_actual, roll_actual;
     float    gyro_pitch_rate, gyro_roll_rate;  // post-sign-flip, fed to D
+    float    gyro_yaw_rate;                    // post-sign-flip, fed to inner yaw PID
 
     // --- intermediates: setpoint shaping ---
     float    pitch_target, roll_target;
+
+    // --- heading hold (outer loop) ---
+    // heading_setpoint is NaN when no held target is latched (stick out of
+    // deadband). Default-initialized to NaN so a freshly zero-init telemetry
+    // row faithfully reports "not latched" rather than "latched at 0".
+    float    heading_integrated;
+    float    heading_setpoint = std::numeric_limits<float>::quiet_NaN();
+    float    heading_err;
+    float    heading_P;
+    float    omega_target_raw;  // outer P output, pre low-pass
+    float    omega_target;      // post low-pass, fed to inner yaw PID
 
     // --- pitch PID (every term split) ---
     float    pitch_err, pitch_P, pitch_I, pitch_D, pitch_out_raw, pitch_out;
 
     // --- roll PID ---
     float    roll_err, roll_P, roll_I, roll_D, roll_out_raw, roll_out;
+
+    // --- yaw-rate PID (inner loop; measurement = gyroYawSign * gyro.z) ---
+    float    yaw_rate_err, yaw_rate_P, yaw_rate_I, yaw_rate_D, yaw_rate_out;
 
     // --- outputs: body-frame command sent to drivetrain ---
     float    body_vx_cmd, body_vy_cmd, body_omega_cmd;  // post-sign-flip
@@ -81,10 +102,12 @@ struct BalanceTelemetry {
     // --- live gain values (a /balance/set is visible in the row it took effect) ---
     float    pitch_Kp, pitch_Ki, pitch_Kd;
     float    roll_Kp,  roll_Ki,  roll_Kd;
+    float    yaw_rate_Kp, yaw_rate_Ki, yaw_rate_Kd;
+    float    heading_Kp;
     float    pitch_deadband, roll_deadband;
     float    max_output_velocity;
     float    envelope_enter_sin, envelope_exit_sin;
-    float    gyro_pitch_sign, gyro_roll_sign;
+    float    gyro_pitch_sign, gyro_roll_sign, gyro_yaw_sign;
     float    tilt_per_velocity, max_tilt_setpoint;
 
     // --- state flags ---
