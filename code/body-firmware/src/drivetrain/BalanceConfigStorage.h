@@ -15,7 +15,7 @@
 // fall back to RobotConstants::balanceConfig().
 namespace BalanceConfigStorage {
 
-constexpr uint16_t VERSION = 2;
+constexpr uint16_t VERSION = 3;
 
 bool load(BalanceConfig& out);
 void save(const BalanceConfig& cfg);

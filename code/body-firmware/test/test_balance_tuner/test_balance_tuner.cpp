@@ -255,6 +255,64 @@ void test_reset_to_defaults_ors_config_reset_bit() {
     TEST_ASSERT_TRUE((bits & kEvent_CONFIG_RESET) != 0u);
 }
 
+void test_try_set_yaw_kp_updates_live_config() {
+    String err;
+    bool ok = g_tuner.trySet(String("yawRateKp"), 0.5f, err);
+    TEST_ASSERT_TRUE(ok);
+    const BalanceConfig* live = g_tuner.slot().load();
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, live->yawRateKp);
+}
+
+void test_try_set_yaw_kp_negative_rejected() {
+    const BalanceConfig* before = g_tuner.slot().load();
+    float orig = before->yawRateKp;
+
+    String err;
+    bool ok = g_tuner.trySet(String("yawRateKp"), -1.0f, err);
+    TEST_ASSERT_FALSE(ok);
+
+    const BalanceConfig* after = g_tuner.slot().load();
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, orig, after->yawRateKp);
+}
+
+void test_try_set_heading_kp_negative_rejected() {
+    String err;
+    bool ok = g_tuner.trySet(String("headingKp"), -0.1f, err);
+    TEST_ASSERT_FALSE(ok);
+}
+
+void test_try_set_gyro_yaw_sign_out_of_range_rejected() {
+    String err;
+    bool ok = g_tuner.trySet(String("gyroYawSign"), 2.0f, err);
+    TEST_ASSERT_FALSE(ok);
+}
+
+void test_try_set_gyro_yaw_sign_negative_one_accepted() {
+    String err;
+    bool ok = g_tuner.trySet(String("gyroYawSign"), -1.0f, err);
+    TEST_ASSERT_TRUE(ok);
+    const BalanceConfig* live = g_tuner.slot().load();
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.0f, live->gyroYawSign);
+}
+
+void test_show_includes_new_yaw_keys() {
+    g_tuner.handle(String("balance show"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKp"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKi"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKd"));
+    TEST_ASSERT_TRUE(captured_contains("headingKp"));
+    TEST_ASSERT_TRUE(captured_contains("gyroYawSign"));
+}
+
+void test_show_pids_includes_yaw_gains_not_sign() {
+    g_tuner.handle(String("balance show pids"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKp"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKi"));
+    TEST_ASSERT_TRUE(captured_contains("yawRateKd"));
+    TEST_ASSERT_TRUE(captured_contains("headingKp"));
+    TEST_ASSERT_FALSE(captured_contains("gyroYawSign"));
+}
+
 void test_multiple_events_or_together() {
     String err;
     bool ok = g_tuner.trySet(String("pitchKp"), 2.25f, err);
@@ -283,6 +341,13 @@ int main() {
     RUN_TEST(test_try_set_failure_does_not_or_bit);
     RUN_TEST(test_save_nvs_ors_config_saved_bit);
     RUN_TEST(test_reset_to_defaults_ors_config_reset_bit);
+    RUN_TEST(test_try_set_yaw_kp_updates_live_config);
+    RUN_TEST(test_try_set_yaw_kp_negative_rejected);
+    RUN_TEST(test_try_set_heading_kp_negative_rejected);
+    RUN_TEST(test_try_set_gyro_yaw_sign_out_of_range_rejected);
+    RUN_TEST(test_try_set_gyro_yaw_sign_negative_one_accepted);
+    RUN_TEST(test_show_includes_new_yaw_keys);
+    RUN_TEST(test_show_pids_includes_yaw_gains_not_sign);
     RUN_TEST(test_multiple_events_or_together);
     return UNITY_END();
 }

@@ -46,11 +46,18 @@ constexpr Field kAllFields[] = {
     {"envelopeExitSin",   &BalanceConfig::envelopeExitSin},
     {"gyroPitchSign",     &BalanceConfig::gyroPitchSign},
     {"gyroRollSign",      &BalanceConfig::gyroRollSign},
+    {"yawRateKp",         &BalanceConfig::yawRateKp},
+    {"yawRateKi",         &BalanceConfig::yawRateKi},
+    {"yawRateKd",         &BalanceConfig::yawRateKd},
+    {"headingKp",         &BalanceConfig::headingKp},
+    {"gyroYawSign",       &BalanceConfig::gyroYawSign},
 };
 
 constexpr const char* kPidFields[] = {
     "pitchKp", "pitchKi", "pitchKd",
     "rollKp",  "rollKi",  "rollKd",
+    "yawRateKp", "yawRateKi", "yawRateKd",
+    "headingKp",
 };
 
 bool isGainField(const char* name) {
@@ -201,6 +208,10 @@ bool BalanceTuner::trySet(const String& key, float value, String& err) {
 
     if (isGainField(f->name) && value < 0.0f) {
         err = String("gain must be >= 0");
+        return false;
+    }
+    if (std::strcmp(f->name, "gyroYawSign") == 0 && value != 1.0f && value != -1.0f) {
+        err = String("gyroYawSign must be +1 or -1");
         return false;
     }
     if ((std::strcmp(f->name, "pitchDeadband") == 0 ||

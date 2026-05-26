@@ -72,6 +72,11 @@ static BalanceConfig makeNonDefaultConfig() {
     cfg.envelopeExitSin   = 0.800f;
     cfg.gyroPitchSign     = -1.0f;
     cfg.gyroRollSign      =  1.0f;
+    cfg.yawRateKp         = 0.75f;
+    cfg.yawRateKi         = 0.02f;
+    cfg.yawRateKd         = 0.04f;
+    cfg.headingKp         = 1.25f;
+    cfg.gyroYawSign       = -1.0f;
     return cfg;
 }
 
@@ -96,6 +101,12 @@ void test_default_config_values_match_spec() {
 
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.gyroPitchSign);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.gyroRollSign);
+
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKi);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.headingKp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.gyroYawSign);
 }
 
 void test_config_is_trivially_copyable() {
@@ -133,6 +144,11 @@ void test_save_then_load_round_trip() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.envelopeExitSin,   loaded.envelopeExitSin);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.gyroPitchSign,     loaded.gyroPitchSign);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.gyroRollSign,      loaded.gyroRollSign);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKp,         loaded.yawRateKp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKi,         loaded.yawRateKi);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKd,         loaded.yawRateKd);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.headingKp,         loaded.headingKp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.gyroYawSign,       loaded.gyroYawSign);
 }
 
 void test_load_with_missing_blob_returns_defaults() {
@@ -183,8 +199,8 @@ void test_save_writes_version_prefix() {
     BalanceConfigStorage::save(cfg);
 
     TEST_ASSERT_EQUAL_UINT(sizeof(uint16_t) + sizeof(BalanceConfig), g_put_blob.size());
-    // Little-endian VERSION = 1 → 0x01 0x00.
-    TEST_ASSERT_EQUAL_UINT8(0x01, g_put_blob[0]);
+    // Little-endian VERSION = 3 → 0x03 0x00.
+    TEST_ASSERT_EQUAL_UINT8(0x03, g_put_blob[0]);
     TEST_ASSERT_EQUAL_UINT8(0x00, g_put_blob[1]);
 
     BalanceConfig roundtrip;
@@ -192,6 +208,9 @@ void test_save_writes_version_prefix() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.pitchKp,         roundtrip.pitchKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.envelopeExitSin, roundtrip.envelopeExitSin);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.gyroPitchSign,   roundtrip.gyroPitchSign);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.gyroYawSign,     roundtrip.gyroYawSign);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.yawRateKp,       roundtrip.yawRateKp);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, cfg.headingKp,       roundtrip.headingKp);
 }
 
 int main() {
