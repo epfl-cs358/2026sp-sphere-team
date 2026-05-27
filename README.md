@@ -412,7 +412,7 @@ make dev     # Start all services
 
 Once running:
 - Webapp control interface: [Webapp](http://localhost:3003)
-- Stream client: [TODO : link](http://localhost:3004) 
+- Stream client: [link](http://localhost:3004) 
 - WebSerial: [link](http://bb8-robot.local:81/webserial)
 
 ---
