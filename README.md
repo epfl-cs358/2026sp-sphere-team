@@ -337,10 +337,9 @@ The relay fans out every frame from the camera to every viewer.
 
 ## Web App
 
-<img width="600" height="380" alt="Capture d’écran 2026-05-28 à 00 06 46" src="https://github.com/user-attachments/assets/b95fce42-e2d9-4f17-aa9a-45ee6a896fd9" />
-<img width="600" height="380" alt="Capture d’écran 2026-05-28 à 00 06 36" src="https://github.com/user-attachments/assets/0b69f07b-0b92-40d4-acc6-8407239e4af9" />
-<img width="600" height="380" alt="Capture d’écran 2026-05-28 à 00 06 26" src="https://github.com/user-attachments/assets/0bf8abb1-f7ff-4b43-a1b2-2b6e6d1dbd47" />
-
+<img width="700" height="400" alt="Capture d’écran 2026-05-28 à 00 06 26" src="https://github.com/user-attachments/assets/0bf8abb1-f7ff-4b43-a1b2-2b6e6d1dbd47" />
+<img width="700" height="400" alt="Capture d’écran 2026-05-28 à 00 06 46" src="https://github.com/user-attachments/assets/b95fce42-e2d9-4f17-aa9a-45ee6a896fd9" />
+<img width="700" height="400" alt="Capture d’écran 2026-05-28 à 00 06 36" src="https://github.com/user-attachments/assets/0b69f07b-0b92-40d4-acc6-8407239e4af9" />
 
 What you can do from the dashboard:
 
