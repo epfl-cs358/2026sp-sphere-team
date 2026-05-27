@@ -54,8 +54,9 @@ The robot:
 | Battery | LiPo | 5000mAh / 3S = 11V | Course provided |
 | BMS | 3S 60A | Protects the LiPo | Course provided |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
-| Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
 | Servo | SG90 | Changes the angle of the camera | Course provided |
+| Head Battery | Li-Ion Battery 3.7V 3200mA NCR18650B 18650 with Flat Top |  | [Bastel Garage](https://www.bastelgarage.ch/li-ion-battery-3-7v-3200ma-ncr18650b-18650-with-flat-top) |
+| Head Battery shield | 1x18650 Lithium Battery Shield 5V 3A / 3V 1A |  | [Bastel Garage](https://www.bastelgarage.ch/1x18650-lithium-battery-shield-5v-3a-3v-1a) |
 
 
 ### Mechanical Parts (Body)
@@ -71,6 +72,7 @@ The robot:
 | 2 metal pipes (1.5mm(external diamateter) x 60mm & 2.5mm(external diamateter) x 200mm)| Aluminium (any metal can be used) | Tubes to hold and adjust the magnet holder and upper ball bearing |  |
 | Hose clamp | PETG (3D printed) | Made to hold the bard in the body and make the magnets height adjustable | [Hose Clamp](./README_files/Body/Hose%20Clamp.step) |
 | Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place | [Magnet Holder](./README_files/Body/Magnet%20Holder.step) |
+| Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
 | Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape | [Hemisphere](./README_files/Body/Sphere%20Shell%20(Hemisphere).step) [Rail](./README_files/Body/Sphere%20Shell%20(Rail).step) |
 
 ### Mechanical Parts (Head)
