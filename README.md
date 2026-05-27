@@ -206,7 +206,7 @@ The head houses the XIAO Vision AI Camera and its own battery. It joins the same
 10. Screw the Ball Transfer Unit (Support) on the Head-to-sphere contact.
 11. Add the ball and tube on top.
 12. Place the magnets. Watch out that they should all point to the opposite direction from the body magnets.
-13. Screw the Head-to-sphere contact to the sphere once everything works properly
+13. Screw the Head-to-sphere contact to the sphere once everything works properly.
 
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/ad9a2684-88a6-45ed-ae72-f0e17b670557" />
 
