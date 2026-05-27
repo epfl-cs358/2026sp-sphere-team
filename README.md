@@ -190,10 +190,7 @@ LiPo ──┬── BMS ──┬── 12 V ──── L298N supply (×3)
 
 The head houses the XIAO Vision AI Camera and its own small LiPo. It joins the same Wi-Fi as the body but streams video separately.
 
-| Servo Holder | PETG (3D printed) | Holds the servo for the camera | [Servo Holder](./README_files/Head/Servo_Holder.step) |
-| Camera Holder | PETG (3D printed) |  | [Camera Holder](./README_files/Head/Camera_Holder.step) |
-
-1. 3D print the [Head Shell](./README_files/Head/Head%20Shell.step), the [Servo Holder](./README_files/Head/Servo_Holder.step and the Camera Holder](./README_files/Head/Camera_Holder.step).
+1. 3D print the [Head Shell](./README_files/Head/Head%20Shell.step), the [Servo Holder](./README_files/Head/Servo_Holder.step) and the [Camera Holder](./README_files/Head/Camera_Holder.step).
 2. Screw the servo on the Servo holder.
 3. Attach the camera to the camera holder.
 4. Place the camera holder on the Servo.
