@@ -98,7 +98,8 @@ The sphere is what the wheels push against, so it needs to be round, rigid, and 
 - Infill: 15%
 - Supports: Organic supports, enabled for overhangs above 60°
 3. Sand the inside of each hemisphere until it feels smooth. This is what gives the wheels good grip.
-4. Only join the two hemispheres at the very end, once the chassis is in place inside.
+4. Add and glue the 27 rails onto one hemisphere.
+5. Only join the two hemispheres at the very end, once the chassis is in place inside.
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/adb60fc4-800e-4eca-8d98-96ad8852bf2b" />
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/286072ff-c11b-4bee-bda8-11f4af2c0cca" />
 
