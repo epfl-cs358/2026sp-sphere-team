@@ -189,21 +189,27 @@ LiPo ──┬── BMS ──┬── 12 V ──── L298N supply (×3)
 
 The head houses the XIAO Vision AI Camera and its own small LiPo. It joins the same Wi-Fi as the body but streams video separately.
 
-1. 3D print the head shell.
-2. Mount the camera with the lens facing forward.
-3. Wire the head LiPo through its own BMS and buck converter to the camera's 5 V input.
+| Servo Holder | PETG (3D printed) | Holds the servo for the camera | [Servo Holder](./README_files/Head/Servo_Holder.step) |
+| Camera Holder | PETG (3D printed) |  | [Camera Holder](./README_files/Head/Camera_Holder.step) |
+
+1. 3D print the [Head Shell](./README_files/Head/Head%20Shell.step), the [Servo Holder](./README_files/Head/Servo_Holder.step and the Camera Holder](./README_files/Head/Camera_Holder.step).
+2. Screw the servo on the Servo holder.
+3. Attach the camera to the camera holder.
+4. Place the camera holder on the Servo.
+5. Wire the Servo to the camera chip (follow the electronics head schematics).
+6. Add the entenna to the exterior face of the head and connect it to the camera chip.
+7. Screw the servo holder in the head.
+8. Screw the head battery shield in the head.
 
 <img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_2" src="https://github.com/user-attachments/assets/1a81bb35-2e34-4934-b3ee-e37bdb1afe4e" />
 <img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_3" src="https://github.com/user-attachments/assets/6fa49cb2-cbee-4cb5-b089-f7dacbb90b03" />
+   
+9. Print every component in the [Head-to-Sphere-folder](./README_files/Head-to-sphere%20contact).
+10. Screw the Ball Transfer Unit (BTU) plate on the Head-to-sphere contact.
+11. Add the ball and tube on top
+12. Place the magnets. Watch out that they should all point to the opposite direction from the body magnets.
+13. Screw the Head-to-sphere contact to the sphere once everything works properly
 
-
-### Magnetic Head Mount
-
-The head holds onto the sphere with magnets only — there is no mechanical link. That's what lets the head swivel independently while the sphere rolls.
-
-1. Press neodymium magnets into the head's underside, alternating polarities.
-2. Press matching magnets onto the top of the chassis (which sits inside the sphere, just under the head).
-3. Metal ball-bearings in 3D-printed cages provide low-friction contact between the head and the top of the sphere.
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/ad9a2684-88a6-45ed-ae72-f0e17b670557" />
 
 ---
