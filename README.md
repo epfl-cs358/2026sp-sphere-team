@@ -52,11 +52,12 @@ The robot:
 | Motor drivers (×3) | L298N H-bridge modules | One channel per motor | Course provided |
 | IMU | Adafruit BNO055 | 9-DOF with built-in sensor fusion, I²C address 0x28 | [Bastel Garage](https://www.bastelgarage.ch/bno055-intelligent-9-axis-sensor) |
 | Battery | LiPo | 5000mAh / 3S = 11V | Course provided |
-| BMS | [TODO: model] | Protects the LiPo | Course provided |
+| BMS | 3S 60A | Protects the LiPo | Course provided |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
 | Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
+| Servo | SG90 | Changes the angle of the camera | Course provided |
 
-!! ball bearing || SERVO 
+
 
 
 | Part | Material | Notes | File |
