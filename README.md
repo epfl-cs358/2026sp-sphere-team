@@ -107,22 +107,35 @@ The sphere is what the wheels push against, so it needs to be round, rigid, and 
 
 The chassis holds the three motors at 120° spacing, each tilted inward at 30° from vertical so the wheels press against the inside of the sphere.
 
-1. Laser-cut the chassis pieces from MDF.
-2. Assemble with screws. Test-fit the three motors first — don't glue or screw anything down until they fit cleanly.
-3. Mount the motors at 0°, 120°, and 240° looking from above (front, back-right, back-left).
-4. Mount the IMU as far as possible from the head magnets, and as low as possible in the chassis. A low center of mass keeps the robot stable.
+1. 3D print the [Motor Holder](./README_files/Body/Motor%20holder.step)
+2. Lazer cut the internal plates ( [Bottom](./README_files/Body/Internal%20Plate%20(Bottom).step) [Side for LiPo](./README_files/Body/Internal%20Plate%20(Side%20for%20LiPo).step) [Side](./README_files/Body/Internal%20Plate%20(Side).step) [Top](./README_files/Body/internal%20Plate%20(Top).step) )
+3. Test-fit the three motors first — don't glue or screw anything down until they fit cleanly.
+4. Glue the bottom plate to the motor holder.
+5. Gule the walls of the plates and screw the top plate on the walls.
+6. Screw the [Pipe Holder](./README_files/Body/Pipe%20Holder.step) at the center of the plate and glue the 20mm tube inside.
+7. Add the [Hose Clamp](./README_files/Body/Hose%20Clamp.step) and the 15mm tube on top.
+8. Make sure the Hose clamp is well fitted in the lower tube (it should be pressed down).
+9. Place the [Magnet Holder](./README_files/Body/Magnet%20Holder.step) on the upper tube.
+10. Glue a ball transfer unit to the top of the tube.
+11. You will be able to adjuste height of the magnet holder and ball transfer unit once you have the complete sphere.
+12. 3D print and screw on the upper plate the [BMS Box (Cage)](./README_files/Body/BMS%20Box%20(Cage).step) and [BMS Box (Plate)](./README_files/Body/BMS%20Box%20(Plate).step).
+13. Screw every body electronical component onto it (there are two drivers on the bottom plate and one on top).
+15. Mount the motors.
+16. Mount the IMU as far as possible from the head magnets, and as low as possible in the chassis. A low center of mass keeps the robot stable.
+17. Do the wiring (follow the electronical diagram)
    
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/5e29a8db-70be-4f34-a20c-36a505c2a91f" />
 
 ### Motors and Wheels
 
-1. Print the 3 omni-wheel assemblies in PETG. Check that the sub-rollers spin freely.
-2. Press-fit each wheel onto the motor's D-shaft.
-3. Check the rolling direction. Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
+1. 3D Print every file in the [Omniwheel](./README_files/Omniwheel) folder. Note that the material that should be used is in the file name.
+2. Follow the following steps : https://github.com/epfl-cs358/2026sp-sphere-team/issues/80
+4. Check the rolling direction. Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
 
 ### Electronics Assembly
 
 **Electronics schematics**
+
 <img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
 
 
