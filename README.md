@@ -199,12 +199,12 @@ The head houses the XIAO Vision AI Camera and its own small LiPo. It joins the s
 7. Screw the servo holder in the head.
 8. Screw the head battery shield in the head.
 
-<img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_2" src="https://github.com/user-attachments/assets/1a81bb35-2e34-4934-b3ee-e37bdb1afe4e" />
-<img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_3" src="https://github.com/user-attachments/assets/6fa49cb2-cbee-4cb5-b089-f7dacbb90b03" />
+<img width="285" height="379" alt="PHOTO-2026-05-15-12-07-36_2" src="https://github.com/user-attachments/assets/1a81bb35-2e34-4934-b3ee-e37bdb1afe4e" />
+<img  width="285" height="379" alt="PHOTO-2026-05-15-12-07-36_3" src="https://github.com/user-attachments/assets/6fa49cb2-cbee-4cb5-b089-f7dacbb90b03" />
    
 9. Print every component in the [Head-to-Sphere-folder](./README_files/Head-to-sphere%20contact).
-10. Screw the Ball Transfer Unit (BTU) plate on the Head-to-sphere contact.
-11. Add the ball and tube on top
+10. Screw the Ball Transfer Unit (Support) on the Head-to-sphere contact.
+11. Add the ball and tube on top.
 12. Place the magnets. Watch out that they should all point to the opposite direction from the body magnets.
 13. Screw the Head-to-sphere contact to the sphere once everything works properly
 
