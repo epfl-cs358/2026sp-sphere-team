@@ -58,7 +58,7 @@ The robot:
 | Servo | SG90 | Changes the angle of the camera | Course provided |
 
 
-
+### Mechanical Parts (Body)
 
 | Part | Material | Notes | File |
 |---|---|---| --- |
