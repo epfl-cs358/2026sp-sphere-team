@@ -65,7 +65,7 @@ The robot:
 |---|---|---| --- |
 | Omni wheels (×3), ~9.25 cm diameter | PETG/TPU  (3D printed) | | |
 | Metal sticks (x15), 3mmx35mm | Steel (any metal can be used) |  Metals parts used to hold the omni wheels assembly |  |
-| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | |
+| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | [Motor Holder](./README_files/Motor%20holder.step) |
 | Internal plates | MDF (laser-cut) | Structure for the electronical components |  |
 | BMS Box | PETG (3D printed)  |  |  |
 | Tube Holder | PETG (3D printed) | Holds the tube for the magnets |  
