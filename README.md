@@ -126,6 +126,8 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
    
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/5e29a8db-70be-4f34-a20c-36a505c2a91f" />
 
+<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/8a8ec03a-3ec9-492f-8c21-2e44acd8e312" />
+
 ### Motors and Wheels
 
 1. 3D Print every file in the [Omniwheel](./README_files/Omniwheel) folder. Note that the material that should be used is in the file name.
@@ -178,7 +180,6 @@ LiPo ──┬── BMS ──┬── 12 V ──── L298N supply (×3)
        └── status LED
 ```
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/1c49d482-4739-4087-a9eb-67f866b7c235" />
-<img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/8a8ec03a-3ec9-492f-8c21-2e44acd8e312" />
 
 
 > Add bulk capacitance (≥ 1000 µF + 0.1 µF ceramic) on the 12 V rail near each L298N. Without it, the motors will brown out the ESP32 every time you accelerate.
