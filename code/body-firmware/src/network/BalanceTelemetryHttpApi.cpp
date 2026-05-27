@@ -325,7 +325,7 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
     }
     n += n2;
 
-    std::snprintf(
+    int n3 = std::snprintf(
         buf + n, sizeof(buf) - n,
         "\"heading_err\":%g,\"heading_P\":%g,"
         "\"omega_target_raw\":%g,\"omega_target\":%g,"
@@ -440,6 +440,11 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         static_cast<unsigned>(t.cmd_stale),
 
         static_cast<unsigned>(t.event_flags));
+    if (n3 < 0 || n3 >= static_cast<int>(sizeof(buf) - n)) {
+        // Truncated — best-effort: emit what we have and bail.
+        out += buf;
+        return;
+    }
     out += buf;
 }
 

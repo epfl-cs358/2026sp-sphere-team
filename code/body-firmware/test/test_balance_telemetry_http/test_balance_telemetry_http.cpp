@@ -285,6 +285,26 @@ void test_appendSnapshotJson_emits_null_for_nan_heading_setpoint() {
         "JSON must not contain literal 'nan'");
 }
 
+// 9. Mirror of the NaN test for the finite branch — guards against
+//    branch-inversion regressions in the heading_setpoint conditional.
+//    %g formats 1.23f as "1.23".
+void test_appendSnapshotJson_emits_value_for_finite_heading_setpoint() {
+    BalanceTelemetry t{};
+    t.heading_setpoint = 1.23f;
+    BalanceTelemetryWs::publish(t);
+    BalanceTelemetryWs::pumpOnce();
+
+    String s = BalanceTelemetryHttpApi::buildLatestJson();
+    std::string body(s.c_str(), s.length());
+
+    TEST_ASSERT_TRUE_MESSAGE(
+        body.find("\"heading_setpoint\":1.23") != std::string::npos,
+        "expected \"heading_setpoint\":1.23 in JSON");
+    TEST_ASSERT_TRUE_MESSAGE(
+        body.find("\"heading_setpoint\":null") == std::string::npos,
+        "JSON must not contain null for finite heading_setpoint");
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_latest_json_includes_every_column);
@@ -293,5 +313,6 @@ int main(int, char**) {
     RUN_TEST(test_schema_json_lists_all_columns);
     RUN_TEST(test_header_text_matches_csv_order);
     RUN_TEST(test_appendSnapshotJson_emits_null_for_nan_heading_setpoint);
+    RUN_TEST(test_appendSnapshotJson_emits_value_for_finite_heading_setpoint);
     return UNITY_END();
 }
