@@ -43,14 +43,16 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
                                            float dt) {
     const BalanceConfig& cfg = *_configSlot.load(std::memory_order_acquire);
 
-    // Top-of-update IMU validity guard. A NaN quaternion or gyro.z would
-    // poison every downstream math op (quatToBodyGravity → tilt → PID), and
-    // the PID's BB8_ASSERT would abort. Skipping the drivetrain write is
-    // safer than driving on garbage; persistent NaNs surface as a continuous
-    // kEvent_IMU_INVALID stream in telemetry.
+    // Top-of-update IMU validity guard. A NaN quaternion or any gyro axis
+    // would poison every downstream math op (quatToBodyGravity → tilt → PID),
+    // and the PID's BB8_ASSERT(isfinite(rate)) would abort. Gyro x/y are
+    // explicit rate inputs to the pitch/roll PIDs; gyro.z feeds the yaw
+    // loop. Skipping the drivetrain write is safer than driving on garbage;
+    // persistent NaNs surface as a continuous kEvent_IMU_INVALID in telemetry.
     const Quat& q = imuData.orientation;
     if (!std::isfinite(q.w) || !std::isfinite(q.x) || !std::isfinite(q.y) ||
-        !std::isfinite(q.z) || !std::isfinite(imuData.gyro.z)) {
+        !std::isfinite(q.z) || !std::isfinite(imuData.gyro.x) ||
+        !std::isfinite(imuData.gyro.y) || !std::isfinite(imuData.gyro.z)) {
         _lastTelemetry = BalanceTelemetry{};
         _lastTelemetry.dt_used     = dt;
         _lastTelemetry.event_flags = kEvent_IMU_INVALID;
@@ -62,7 +64,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     // mutation; cost is negligible vs. allowing tuner edits to take effect.
     _pitchPid.setGains(cfg.pitchKp, cfg.pitchKi, cfg.pitchKd);
     _rollPid.setGains(cfg.rollKp, cfg.rollKi, cfg.rollKd);
-    _yawRatePid.setGains(cfg.yawRateKp, cfg.yawRateKi, cfg.yawRateKd);
+    _yawRatePid.setGains(cfg.yawRateKp, cfg.yawRateKi, 0.0f);
     _pitchPid.setDeadband(cfg.pitchDeadband);
     _rollPid.setDeadband(cfg.rollDeadband);
 
@@ -96,7 +98,6 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.roll_Kd  = cfg.rollKd;
     _lastTelemetry.yaw_rate_Kp = cfg.yawRateKp;
     _lastTelemetry.yaw_rate_Ki = cfg.yawRateKi;
-    _lastTelemetry.yaw_rate_Kd = cfg.yawRateKd;
     _lastTelemetry.heading_Kp  = cfg.headingKp;
     _lastTelemetry.pitch_deadband      = cfg.pitchDeadband;
     _lastTelemetry.roll_deadband       = cfg.rollDeadband;
@@ -179,8 +180,9 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.roll_out  = vy_out;
 
     // Yaw-spin recovery: edge-triggered latch on sustained over-threshold
-    // |gyro_yaw_rate|. Exit symmetrically — once the elapsed-counter rolls
-    // past the trip window in the OTHER direction, clear the latch.
+    // |gyro_yaw_rate|. Single elapsed-time accumulator: counts up while
+    // above threshold, decays back down once below; latch clears when the
+    // accumulator reaches zero.
     const float yawSpinTripSec = static_cast<float>(RobotConstants::YAW_SPIN_TRIP_MS) / 1000.0f;
     const bool aboveSpinThreshold = std::fabs(gyro_yaw_rate) > RobotConstants::YAW_SPIN_THRESHOLD;
     if (aboveSpinThreshold) {
@@ -205,12 +207,12 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         }
     }
 
-    // Ship-safe regression guarantee: with all yaw gains == 0, the inner PID
+    // Ship-safe regression guarantee: with both yaw gains == 0, the inner PI
     // would just emit zero (Kp*err = 0). Bypass it entirely so cmd.omega keeps
     // its pre-Commit-3 passthrough behavior — operators can disable closed-loop
-    // yaw by zeroing all three gains without losing manual stick control.
+    // yaw by zeroing both gains without losing manual stick control.
     const bool yawLoopDisabled =
-        (cfg.yawRateKp == 0.0f) && (cfg.yawRateKi == 0.0f) && (cfg.yawRateKd == 0.0f);
+        (cfg.yawRateKp == 0.0f) && (cfg.yawRateKi == 0.0f);
     float omega_out;
     if (_yawSpinActive) {
         omega_out = 0.0f;

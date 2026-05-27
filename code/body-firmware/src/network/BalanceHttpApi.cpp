@@ -44,7 +44,7 @@ String configJson(const BalanceConfig& c) {
         "\"maxOutputVelocity\":%g,"
         "\"envelopeEnterSin\":%g,\"envelopeExitSin\":%g,"
         "\"gyroPitchSign\":%g,\"gyroRollSign\":%g,"
-        "\"yawRateKp\":%g,\"yawRateKi\":%g,\"yawRateKd\":%g,"
+        "\"yawRateKp\":%g,\"yawRateKi\":%g,"
         "\"headingKp\":%g,"
         "\"gyroYawSign\":%g"
         "}",
@@ -56,7 +56,7 @@ String configJson(const BalanceConfig& c) {
         static_cast<double>(c.maxOutputVelocity),
         static_cast<double>(c.envelopeEnterSin), static_cast<double>(c.envelopeExitSin),
         static_cast<double>(c.gyroPitchSign),    static_cast<double>(c.gyroRollSign),
-        static_cast<double>(c.yawRateKp), static_cast<double>(c.yawRateKi), static_cast<double>(c.yawRateKd),
+        static_cast<double>(c.yawRateKp), static_cast<double>(c.yawRateKi),
         static_cast<double>(c.headingKp),
         static_cast<double>(c.gyroYawSign));
     return String(buf);

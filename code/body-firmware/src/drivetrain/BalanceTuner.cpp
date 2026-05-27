@@ -48,7 +48,6 @@ constexpr Field kAllFields[] = {
     {"gyroRollSign",      &BalanceConfig::gyroRollSign},
     {"yawRateKp",         &BalanceConfig::yawRateKp},
     {"yawRateKi",         &BalanceConfig::yawRateKi},
-    {"yawRateKd",         &BalanceConfig::yawRateKd},
     {"headingKp",         &BalanceConfig::headingKp},
     {"gyroYawSign",       &BalanceConfig::gyroYawSign},
 };
@@ -56,7 +55,7 @@ constexpr Field kAllFields[] = {
 constexpr const char* kPidFields[] = {
     "pitchKp", "pitchKi", "pitchKd",
     "rollKp",  "rollKi",  "rollKd",
-    "yawRateKp", "yawRateKi", "yawRateKd",
+    "yawRateKp", "yawRateKi",
     "headingKp",
 };
 

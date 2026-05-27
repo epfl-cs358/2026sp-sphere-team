@@ -153,11 +153,12 @@ void test_header_line_matches_canonical_columns() {
     for (const char* p = h; *p; ++p) {
         if (*p == ',') ++commas;
     }
-    // 83 original columns + 17 yaw/heading columns = 100 columns => 99 commas.
-    TEST_ASSERT_EQUAL_UINT32(99, commas);
+    // 83 original columns + 16 yaw/heading columns = 99 columns => 98 commas.
+    // (yaw_rate_Kd removed in chore: PI-only yaw loop.)
+    TEST_ASSERT_EQUAL_UINT32(98, commas);
     TEST_ASSERT_TRUE(std::strstr(h, "seq,t_us,dt_measured,dt_used") == h);
     TEST_ASSERT_TRUE(std::strstr(h, "gyro_pitch_sign,gyro_roll_sign,gyro_yaw_sign") != nullptr);
-    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(h, "yaw_rate_Kp,yaw_rate_Ki,heading_Kp") != nullptr);
     TEST_ASSERT_TRUE(std::strstr(h, "gyro_yaw_rate") != nullptr);
     TEST_ASSERT_TRUE(std::strstr(h, "heading_integrated") != nullptr);
     TEST_ASSERT_TRUE(std::strstr(h, "heading_setpoint") != nullptr);

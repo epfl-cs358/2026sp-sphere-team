@@ -80,7 +80,7 @@ static BalanceConfig makeTestConfig() {
         .envelopeExitSin   = std::sin(55.0f * 3.14159265f / 180.0f),
         .gyroPitchSign     = 1.0f,
         .gyroRollSign      = 1.0f,
-        .yawRateKp = 0.0f, .yawRateKi = 0.0f, .yawRateKd = 0.0f,
+        .yawRateKp = 0.0f, .yawRateKi = 0.0f,
         .headingKp         = 0.0f,
         .gyroYawSign       = 1.0f,
     };
@@ -685,6 +685,34 @@ void test_nan_gyro_z_skips_drive() {
     TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_IMU_INVALID);
 }
 
+// gyro.x feeds the roll PID as the explicit rate argument; without the
+// guard the inner PID's BB8_ASSERT(isfinite(rate)) would abort firmware.
+void test_nan_gyro_x_skips_drive() {
+    BodyVelocity cmd{0.1f, 0.2f, 0.3f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f};
+
+    int driveCountBefore = drivetrain->driveCallCount;
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_EQUAL(driveCountBefore, drivetrain->driveCallCount);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_IMU_INVALID);
+}
+
+// gyro.y feeds the pitch PID as the explicit rate argument; same story
+// as gyro.x — guard or the PID assert kills the firmware.
+void test_nan_gyro_y_skips_drive() {
+    BodyVelocity cmd{0.1f, 0.2f, 0.3f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, std::numeric_limits<float>::quiet_NaN(), 0.0f};
+
+    int driveCountBefore = drivetrain->driveCallCount;
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_EQUAL(driveCountBefore, drivetrain->driveCallCount);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_IMU_INVALID);
+}
+
 void test_yaw_spin_recovery_triggers_after_100ms() {
     BalanceConfig c = makeTestConfig();
     c.yawRateKp = 0.5f;
@@ -704,6 +732,32 @@ void test_yaw_spin_recovery_triggers_after_100ms() {
     TEST_ASSERT_TRUE(recoveryFired);
     // Once spin is active, omega forced to 0.
     TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.0f, drivetrain->lastDrive.omega);
+}
+
+// kEvent_YAW_SPIN_RECOVERY is the rising-edge bit for the spin latch.
+// Once _yawSpinActive is true, subsequent ticks at the same sustained
+// rate must NOT re-OR the bit — counters would double-count otherwise.
+void test_yaw_spin_recovery_fires_exactly_once_across_ticks() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 15.0f};
+
+    int fireCount = 0;
+    int fireTick  = -1;
+    for (int i = 0; i < 20; ++i) {
+        controller->update(cmd, imuData, 0.01f);
+        if (controller->lastTelemetry().event_flags & kEvent_YAW_SPIN_RECOVERY) {
+            ++fireCount;
+            if (fireTick < 0) fireTick = i;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(1, fireCount);
+    // YAW_SPIN_TRIP_MS=100 with dt=10ms ⇒ trip on the 11th tick (index 10).
+    TEST_ASSERT_EQUAL_INT(10, fireTick);
 }
 
 void test_yaw_spin_recovery_clears_when_rate_drops() {
@@ -802,7 +856,10 @@ int main() {
     RUN_TEST(test_yaw_gyro_sign_inverts_loop);
     RUN_TEST(test_nan_orientation_skips_drive);
     RUN_TEST(test_nan_gyro_z_skips_drive);
+    RUN_TEST(test_nan_gyro_x_skips_drive);
+    RUN_TEST(test_nan_gyro_y_skips_drive);
     RUN_TEST(test_yaw_spin_recovery_triggers_after_100ms);
+    RUN_TEST(test_yaw_spin_recovery_fires_exactly_once_across_ticks);
     RUN_TEST(test_yaw_spin_recovery_clears_when_rate_drops);
     RUN_TEST(test_yaw_pid_resets_on_arm_disarm_stop_and_fault);
     return UNITY_END();

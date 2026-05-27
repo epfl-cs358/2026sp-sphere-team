@@ -76,7 +76,6 @@ void test_default_construction_zeros_all_fields() {
     // Yaw/heading gains + sign
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Kp);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Ki);
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, t.yaw_rate_Kd);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.heading_Kp);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, t.gyro_yaw_sign);
 

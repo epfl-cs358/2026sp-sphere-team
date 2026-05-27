@@ -315,7 +315,6 @@ void controlTask(void* /*arg*/) {
             t.roll_Kp  = snap.rollKp;  t.roll_Ki  = snap.rollKi;  t.roll_Kd  = snap.rollKd;
             t.yaw_rate_Kp = snap.yawRateKp;
             t.yaw_rate_Ki = snap.yawRateKi;
-            t.yaw_rate_Kd = snap.yawRateKd;
             t.heading_Kp  = snap.headingKp;
             t.pitch_deadband = snap.pitchDeadband;
             t.roll_deadband  = snap.rollDeadband;

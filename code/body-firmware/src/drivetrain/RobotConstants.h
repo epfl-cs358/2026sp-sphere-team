@@ -51,7 +51,7 @@ inline BalanceConfig balanceConfig() {
         .envelopeExitSin   = 0.819f,  // sin(55°)
         .gyroPitchSign     = 1.0f,
         .gyroRollSign      = 1.0f,
-        .yawRateKp = 0.0f, .yawRateKi = 0.0f, .yawRateKd = 0.0f,
+        .yawRateKp = 0.0f, .yawRateKi = 0.0f,
         .headingKp         = 0.0f,
         .gyroYawSign       = 1.0f,
     };

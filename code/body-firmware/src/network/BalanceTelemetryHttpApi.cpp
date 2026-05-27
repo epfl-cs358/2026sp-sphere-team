@@ -81,7 +81,7 @@ constexpr const char* kHttpHeaderLine =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
-    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
+    "yaw_rate_Kp,yaw_rate_Ki,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
@@ -185,7 +185,6 @@ constexpr Column kSchema[] = {
     {"roll_Kd",             "float",  "",          "live roll D gain"},
     {"yaw_rate_Kp",         "float",  "",          "live yaw-rate P gain"},
     {"yaw_rate_Ki",         "float",  "",          "live yaw-rate I gain"},
-    {"yaw_rate_Kd",         "float",  "",          "live yaw-rate D gain"},
     {"heading_Kp",          "float",  "",          "live heading P gain"},
     {"pitch_deadband",      "float",  "rad",       "pitch error deadband"},
     {"roll_deadband",       "float",  "rad",       "roll error deadband"},
@@ -203,7 +202,7 @@ constexpr Column kSchema[] = {
     {"event_flags",         "uint32", "bitfield",  "see event_bits decode"},
 };
 constexpr std::size_t kSchemaCount = sizeof(kSchema) / sizeof(kSchema[0]);
-static_assert(kSchemaCount == 100, "schema must list all 100 CSV columns");
+static_assert(kSchemaCount == 99, "schema must list all 99 CSV columns");
 
 // Event-bit decode table — name + bit value. Order matches kEvent_* bit
 // positions; emission order in the JSON matches BalanceTelemetryWs counters.
@@ -344,7 +343,7 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
         "\"wheel_out_0\":%g,\"wheel_out_1\":%g,\"wheel_out_2\":%g,"
         "\"pitch_Kp\":%g,\"pitch_Ki\":%g,\"pitch_Kd\":%g,"
         "\"roll_Kp\":%g,\"roll_Ki\":%g,\"roll_Kd\":%g,"
-        "\"yaw_rate_Kp\":%g,\"yaw_rate_Ki\":%g,\"yaw_rate_Kd\":%g,\"heading_Kp\":%g,"
+        "\"yaw_rate_Kp\":%g,\"yaw_rate_Ki\":%g,\"heading_Kp\":%g,"
         "\"pitch_deadband\":%g,\"roll_deadband\":%g,"
         "\"max_output_velocity\":%g,"
         "\"envelope_enter_sin\":%g,\"envelope_exit_sin\":%g,"
@@ -417,7 +416,6 @@ void appendSnapshotJson(String& out, const BalanceTelemetry& t) {
 
         static_cast<double>(t.yaw_rate_Kp),
         static_cast<double>(t.yaw_rate_Ki),
-        static_cast<double>(t.yaw_rate_Kd),
         static_cast<double>(t.heading_Kp),
 
         static_cast<double>(t.pitch_deadband),

@@ -35,8 +35,9 @@ struct BalanceConfig {
     float gyroPitchSign;       // multiplies imu.gyro.y when computing pitch rate
     float gyroRollSign;        // multiplies imu.gyro.x when computing roll rate
 
-    // Yaw-rate PID (inner loop) and heading-hold P (outer loop).
-    float yawRateKp, yawRateKi, yawRateKd;
+    // Yaw-rate PID (inner loop, PI-only — D would numerically differentiate
+    // the gyro signal) and heading-hold P (outer loop).
+    float yawRateKp, yawRateKi;
     float headingKp;
     float gyroYawSign;         // multiplies imu.gyro.z when computing yaw rate
 };

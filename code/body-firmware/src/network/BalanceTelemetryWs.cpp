@@ -50,7 +50,7 @@ constexpr const char* kHeaderLine =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
-    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
+    "yaw_rate_Kp,yaw_rate_Ki,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
@@ -115,7 +115,7 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
         "%g,%g,%g,"
         "%g,%g,%g,"
         "%g,%g,%g,"
-        "%g,%g,%g,%g,"
+        "%g,%g,%g,"
         "%g,%g,"
         "%g,"
         "%g,%g,"
@@ -231,7 +231,6 @@ int writeCsv(char* buf, std::size_t buflen, const BalanceTelemetry& t) {
 
         static_cast<double>(t.yaw_rate_Kp),
         static_cast<double>(t.yaw_rate_Ki),
-        static_cast<double>(t.yaw_rate_Kd),
         static_cast<double>(t.heading_Kp),
 
         static_cast<double>(t.pitch_deadband),

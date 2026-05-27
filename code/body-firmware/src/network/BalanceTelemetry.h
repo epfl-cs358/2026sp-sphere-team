@@ -102,7 +102,7 @@ struct BalanceTelemetry {
     // --- live gain values (a /balance/set is visible in the row it took effect) ---
     float    pitch_Kp, pitch_Ki, pitch_Kd;
     float    roll_Kp,  roll_Ki,  roll_Kd;
-    float    yaw_rate_Kp, yaw_rate_Ki, yaw_rate_Kd;
+    float    yaw_rate_Kp, yaw_rate_Ki;
     float    heading_Kp;
     float    pitch_deadband, roll_deadband;
     float    max_output_velocity;

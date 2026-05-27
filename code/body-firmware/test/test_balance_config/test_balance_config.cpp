@@ -74,7 +74,6 @@ static BalanceConfig makeNonDefaultConfig() {
     cfg.gyroRollSign      =  1.0f;
     cfg.yawRateKp         = 0.75f;
     cfg.yawRateKi         = 0.02f;
-    cfg.yawRateKd         = 0.04f;
     cfg.headingKp         = 1.25f;
     cfg.gyroYawSign       = -1.0f;
     return cfg;
@@ -104,7 +103,6 @@ void test_default_config_values_match_spec() {
 
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKi);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKd);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.headingKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.gyroYawSign);
 }
@@ -146,7 +144,6 @@ void test_save_then_load_round_trip() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.gyroRollSign,      loaded.gyroRollSign);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKp,         loaded.yawRateKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKi,         loaded.yawRateKi);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.yawRateKd,         loaded.yawRateKd);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.headingKp,         loaded.headingKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, original.gyroYawSign,       loaded.gyroYawSign);
 }
@@ -199,8 +196,8 @@ void test_save_writes_version_prefix() {
     BalanceConfigStorage::save(cfg);
 
     TEST_ASSERT_EQUAL_UINT(sizeof(uint16_t) + sizeof(BalanceConfig), g_put_blob.size());
-    // Little-endian VERSION = 3 → 0x03 0x00.
-    TEST_ASSERT_EQUAL_UINT8(0x03, g_put_blob[0]);
+    // Little-endian VERSION = 4 → 0x04 0x00.
+    TEST_ASSERT_EQUAL_UINT8(0x04, g_put_blob[0]);
     TEST_ASSERT_EQUAL_UINT8(0x00, g_put_blob[1]);
 
     BalanceConfig roundtrip;

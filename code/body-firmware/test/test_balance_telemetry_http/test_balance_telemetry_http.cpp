@@ -45,11 +45,12 @@ std::size_t countSubstr(const std::string& haystack, const std::string& needle) 
     return n;
 }
 
-// Canonical 100-column CSV header — duplicated here (independent witness)
+// Canonical 99-column CSV header — duplicated here (independent witness)
 // so a drift in BalanceTelemetryHttpApi.cpp's header is caught structurally.
 // Order: original 83 + yaw/heading dynamic cluster (after roll PID block,
 // after roll_target, after gyro_roll_rate, after gyro_roll_sign) + gain
-// fields (yaw_rate_Kp/Ki/Kd, heading_Kp, gyro_yaw_sign).
+// fields (yaw_rate_Kp/Ki, heading_Kp, gyro_yaw_sign). yaw_rate_Kd was
+// removed in the PI-only yaw loop chore.
 constexpr const char* kExpectedHeader =
     "seq,t_us,dt_measured,dt_used,"
     "cmd_vx_raw,cmd_vy_raw,cmd_omega_raw,"
@@ -75,7 +76,7 @@ constexpr const char* kExpectedHeader =
     "wheel_out_0,wheel_out_1,wheel_out_2,"
     "pitch_Kp,pitch_Ki,pitch_Kd,"
     "roll_Kp,roll_Ki,roll_Kd,"
-    "yaw_rate_Kp,yaw_rate_Ki,yaw_rate_Kd,heading_Kp,"
+    "yaw_rate_Kp,yaw_rate_Ki,heading_Kp,"
     "pitch_deadband,roll_deadband,"
     "max_output_velocity,"
     "envelope_enter_sin,envelope_exit_sin,"
@@ -84,7 +85,7 @@ constexpr const char* kExpectedHeader =
     "armed_state,in_fault,cmd_stale,"
     "event_flags";
 
-// The 100 column names, in order. Used to assert /telemetry/latest names
+// The 99 column names, in order. Used to assert /telemetry/latest names
 // every field and /telemetry/schema lists every column.
 constexpr const char* kAllColumns[] = {
     "seq", "t_us", "dt_measured", "dt_used",
@@ -111,7 +112,7 @@ constexpr const char* kAllColumns[] = {
     "wheel_out_0", "wheel_out_1", "wheel_out_2",
     "pitch_Kp", "pitch_Ki", "pitch_Kd",
     "roll_Kp",  "roll_Ki",  "roll_Kd",
-    "yaw_rate_Kp", "yaw_rate_Ki", "yaw_rate_Kd", "heading_Kp",
+    "yaw_rate_Kp", "yaw_rate_Ki", "heading_Kp",
     "pitch_deadband", "roll_deadband",
     "max_output_velocity",
     "envelope_enter_sin", "envelope_exit_sin",
@@ -225,7 +226,7 @@ void test_stats_event_counts_reflect_published() {
     TEST_ASSERT_TRUE(body.find("\"in_fault_count\":2") != std::string::npos);
 }
 
-// 6. /telemetry/schema lists all 83 columns with name + desc.
+// 6. /telemetry/schema lists all 99 columns with name + desc.
 void test_schema_json_lists_all_columns() {
     String s = BalanceTelemetryHttpApi::buildSchemaJson();
     std::string body(s.c_str(), s.length());
@@ -243,9 +244,9 @@ void test_schema_json_lists_all_columns() {
             TEST_FAIL_MESSAGE(msg);
         }
     }
-    // 100 desc entries (one per column).
+    // 99 desc entries (one per column).
     std::size_t descs = countSubstr(body, "\"desc\"");
-    TEST_ASSERT_EQUAL_UINT32(100, descs);
+    TEST_ASSERT_EQUAL_UINT32(99, descs);
 
     // All 21 event_bits decoded.
     for (std::size_t i = 0; i < kAllEventNamesCount; ++i) {

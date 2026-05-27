@@ -338,7 +338,7 @@ void test_show_includes_new_yaw_keys() {
     g_tuner.handle(String("balance show"));
     TEST_ASSERT_TRUE(captured_contains("yawRateKp"));
     TEST_ASSERT_TRUE(captured_contains("yawRateKi"));
-    TEST_ASSERT_TRUE(captured_contains("yawRateKd"));
+    TEST_ASSERT_FALSE(captured_contains("yawRateKd"));
     TEST_ASSERT_TRUE(captured_contains("headingKp"));
     TEST_ASSERT_TRUE(captured_contains("gyroYawSign"));
 }
@@ -347,9 +347,19 @@ void test_show_pids_includes_yaw_gains_not_sign() {
     g_tuner.handle(String("balance show pids"));
     TEST_ASSERT_TRUE(captured_contains("yawRateKp"));
     TEST_ASSERT_TRUE(captured_contains("yawRateKi"));
-    TEST_ASSERT_TRUE(captured_contains("yawRateKd"));
+    TEST_ASSERT_FALSE(captured_contains("yawRateKd"));
     TEST_ASSERT_TRUE(captured_contains("headingKp"));
     TEST_ASSERT_FALSE(captured_contains("gyroYawSign"));
+}
+
+// yawRateKd was removed (PI-only yaw loop; D-term would numerically
+// differentiate the gyro signal). Setting it via the tuner must return
+// "unknown key" so operators don't silently write to a stale field.
+void test_try_set_yaw_rate_kd_rejected_as_unknown() {
+    String err;
+    bool ok = g_tuner.trySet(String("yawRateKd"), 0.5f, err);
+    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_TRUE(std::string(err.c_str()).find("unknown") != std::string::npos);
 }
 
 void test_multiple_events_or_together() {
@@ -391,6 +401,7 @@ int main() {
     RUN_TEST(test_try_set_gyro_roll_sign_minus_one_accepted);
     RUN_TEST(test_show_includes_new_yaw_keys);
     RUN_TEST(test_show_pids_includes_yaw_gains_not_sign);
+    RUN_TEST(test_try_set_yaw_rate_kd_rejected_as_unknown);
     RUN_TEST(test_multiple_events_or_together);
     return UNITY_END();
 }

@@ -58,7 +58,6 @@ def test_new_yaw_heading_columns_present():
         "yaw_rate_out",
         "yaw_rate_Kp",
         "yaw_rate_Ki",
-        "yaw_rate_Kd",
         "heading_Kp",
         "gyro_yaw_sign",
     }
@@ -67,5 +66,5 @@ def test_new_yaw_heading_columns_present():
 
 
 def test_gain_cols_includes_new_yaw_heading_gains():
-    for c in ("yaw_rate_Kp", "yaw_rate_Ki", "yaw_rate_Kd", "heading_Kp"):
+    for c in ("yaw_rate_Kp", "yaw_rate_Ki", "heading_Kp"):
         assert c in GAIN_COLS, f"{c} missing from GAIN_COLS"
