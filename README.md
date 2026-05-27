@@ -77,7 +77,7 @@ The robot:
 | Part | Material | Notes | File 
 |---|---|---| --- |
 | Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |  |
-| Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing |  |
+| Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing | [123Roulement](https://www.123roulement.ch/accessoire/bille-aiguille/bille/ba-14-aisi304) |
 | Head shell | PETG (3D printed) | Holds the camera and magnets |  |
 ---
 
