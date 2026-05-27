@@ -94,7 +94,7 @@ The sphere is what the wheels push against, so it needs to be round, rigid, and 
 2. Set the slicer with the PETG optimal profile for your printer, using:
 - Perimeters: 4
 - Infill: 15%
-- Supports: Organic supports, enabled for overhangs above 45°
+- Supports: Organic supports, enabled for overhangs above 60°
 3. Sand the inside of each hemisphere until it feels smooth. This is what gives the wheels good grip.
 4. Only join the two hemispheres at the very end, once the chassis is in place inside.
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/adb60fc4-800e-4eca-8d98-96ad8852bf2b" />
