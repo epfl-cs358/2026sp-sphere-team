@@ -91,7 +91,10 @@ The robot:
 The sphere is what the wheels push against, so it needs to be round, rigid, and smooth on the inside. Inner radius is ~17.5 cm (35 cm diameter), matching the `ROBOT_RADIUS` constant in the firmware.
 
 1. 3D print the two hemispheres (top and bottom) in PETG on a large-format printer (e.g. Prusa XL).
-2. [TODO: slicer settings — layer height, walls, infill, supports]
+2. Set the slicer with the PETG optimal profile for your printer, using:
+- Perimeters: 4
+- Infill: 15%
+- Supports: Organic supports, enabled for overhangs above 45°
 3. Sand the inside of each hemisphere until it feels smooth. This is what gives the wheels good grip.
 4. Only join the two hemispheres at the very end, once the chassis is in place inside.
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/adb60fc4-800e-4eca-8d98-96ad8852bf2b" />
