@@ -1,5 +1,6 @@
 #  Sphere Robot
-<img width="270" height="360" alt="image" src="https://github.com/user-attachments/assets/18845ebc-480a-4fe6-8ec8-26c3b3aed236" />
+
+<img width="1043" height="1600" alt="WhatsApp Image 2026-05-27 at 22 32 17" src="https://github.com/user-attachments/assets/235ac963-14b6-4ab2-a806-31db804c82da" />
 
 A self-contained spherical robot inspired by BB-8. CS-358 final project, EPFL.
 
