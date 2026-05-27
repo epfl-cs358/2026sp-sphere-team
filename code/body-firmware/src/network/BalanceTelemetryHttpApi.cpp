@@ -233,10 +233,11 @@ constexpr EventBit kEventBits[] = {
     {"HEADING_LATCHED",        kEvent_HEADING_LATCHED},
     {"YAW_SPIN_RECOVERY",      kEvent_YAW_SPIN_RECOVERY},
     {"IMU_INVALID",            kEvent_IMU_INVALID},
+    {"PREARM_REJECTED",        kEvent_PREARM_REJECTED},
 };
 constexpr std::size_t kEventBitsCount =
     sizeof(kEventBits) / sizeof(kEventBits[0]);
-static_assert(kEventBitsCount == 21, "expected 21 event bits");
+static_assert(kEventBitsCount == 22, "expected 22 event bits");
 
 // --- JSON formatting -------------------------------------------------------
 // Hand-rolled per BalanceHttpApi convention (no ArduinoJson). %g keeps the

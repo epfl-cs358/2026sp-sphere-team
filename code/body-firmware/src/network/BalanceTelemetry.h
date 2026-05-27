@@ -43,6 +43,7 @@ static constexpr uint32_t kEvent_YAW_RATE_OUT_SATURATED = 1u << 17;
 static constexpr uint32_t kEvent_HEADING_LATCHED        = 1u << 18;
 static constexpr uint32_t kEvent_YAW_SPIN_RECOVERY      = 1u << 19;
 static constexpr uint32_t kEvent_IMU_INVALID            = 1u << 20;
+static constexpr uint32_t kEvent_PREARM_REJECTED        = 1u << 21;
 
 struct BalanceTelemetry {
     // --- timing ---

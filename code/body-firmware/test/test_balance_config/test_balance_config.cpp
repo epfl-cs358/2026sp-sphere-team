@@ -103,7 +103,9 @@ void test_default_config_values_match_spec() {
 
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.yawRateKi);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, cfg.headingKp);
+    // Commit 4: heading hold engaged by default at arm time with a
+    // conservative starter Kp. Operators tune at the bench from here.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.headingKp);
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, cfg.gyroYawSign);
 }
 

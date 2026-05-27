@@ -52,7 +52,11 @@ inline BalanceConfig balanceConfig() {
         .gyroPitchSign     = 1.0f,
         .gyroRollSign      = 1.0f,
         .yawRateKp = 0.0f, .yawRateKi = 0.0f,
-        .headingKp         = 0.0f,
+        // Conservative starter for heading hold. Engaged by default at arm
+        // time; expect to tune at the bench. Zero would keep heading hold
+        // ON in shape but emit zero rate command — set non-zero so the
+        // default-flashed firmware actually holds heading.
+        .headingKp         = 1.0f,
         .gyroYawSign       = 1.0f,
     };
 }

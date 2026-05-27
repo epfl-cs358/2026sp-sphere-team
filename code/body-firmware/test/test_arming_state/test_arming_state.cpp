@@ -104,6 +104,83 @@ void test_arm_does_not_overwrite_concurrent_kill() {
     }
 }
 
+// ---- pre-arm gyro-quiet gate tests (Commit 4) ----------------------------
+
+// PREARM_GYRO_QUIET_DPS = 1.5 dps ≈ 0.02618 rad/s. If any sample in the last
+// 500 ms (50 samples @ 100Hz) exceeds the threshold, arm() must refuse and
+// fire kEvent_PREARM_REJECTED.
+
+void test_prearm_refuses_when_gyro_is_loud() {
+    // Push 50 loud samples (0.05 rad/s ≈ 2.9 dps, well above threshold).
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.05f);
+    }
+    // Clear any prior rejection latch.
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
+                      static_cast<int>(ArmingState::get()));
+    TEST_ASSERT_TRUE(ArmingState::consumePrearmRejected());
+}
+
+void test_prearm_succeeds_when_gyro_is_quiet() {
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.01f);  // ~0.57 dps, well below threshold
+    }
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
+                      static_cast<int>(ArmingState::get()));
+    TEST_ASSERT_FALSE(ArmingState::consumePrearmRejected());
+}
+
+void test_prearm_old_loud_samples_age_out() {
+    // Push 50 loud samples first, then 50 quiet samples — the ring buffer
+    // is 50 deep, so the quiet samples have fully evicted the loud ones.
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.05f);
+    }
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.01f);
+    }
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
+                      static_cast<int>(ArmingState::get()));
+}
+
+void test_prearm_buffer_records_negative_values_by_magnitude() {
+    // Negative rates above magnitude threshold must also reject.
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(-0.05f);
+    }
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
+                      static_cast<int>(ArmingState::get()));
+    TEST_ASSERT_TRUE(ArmingState::consumePrearmRejected());
+}
+
+void test_prearm_rejection_consumed_once() {
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.05f);
+    }
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+    TEST_ASSERT_TRUE(ArmingState::consumePrearmRejected());
+    // Second consume must return false — single-shot semantics.
+    TEST_ASSERT_FALSE(ArmingState::consumePrearmRejected());
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -115,6 +192,11 @@ int main() {
     RUN_TEST(test_clearkill_from_non_killed_is_noop);
     RUN_TEST(test_clearkill_from_killed_to_disarmed);
     RUN_TEST(test_arm_does_not_overwrite_concurrent_kill);
+    RUN_TEST(test_prearm_refuses_when_gyro_is_loud);
+    RUN_TEST(test_prearm_succeeds_when_gyro_is_quiet);
+    RUN_TEST(test_prearm_old_loud_samples_age_out);
+    RUN_TEST(test_prearm_buffer_records_negative_values_by_magnitude);
+    RUN_TEST(test_prearm_rejection_consumed_once);
 
     return UNITY_END();
 }

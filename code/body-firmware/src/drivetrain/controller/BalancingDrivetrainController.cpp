@@ -18,6 +18,16 @@ inline float clampf(float v, float lo, float hi) {
     return v;
 }
 
+// Stick-deadband threshold for heading-hold engagement (rad/s). Operator
+// commands below this magnitude trip the outer P loop into hold mode; above,
+// it passes through as a rate command.
+constexpr float HEADING_DEADBAND = 0.05f;
+
+// Low-pass time constant on the rate-setpoint that feeds the inner yaw PID.
+// Prevents a snap on stick release that would otherwise hand the inner loop
+// an instantaneous setpoint step from cmd.omega → outer-P output.
+constexpr float LP_TAU = 0.15f;
+
 }  // namespace
 
 BalancingDrivetrainController::BalancingDrivetrainController(
@@ -118,8 +128,21 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.gz = gz;
     _lastTelemetry.tilt_mag_sin = tiltMagSin;
 
+    // Sign-flipped yaw rate is needed both for the inner PID below and for
+    // the heading integrator. Compute it once, here, before the fault gate
+    // — the heading integrator must keep advancing during tilt-faults so
+    // that on fault exit the held heading still reflects truth.
+    const float gyro_yaw_rate = cfg.gyroYawSign * imuData.gyro.z;
+    _headingIntegrator += gyro_yaw_rate * dt;
+    _lastTelemetry.gyro_yaw_rate    = gyro_yaw_rate;
+    _lastTelemetry.heading_integrated = _headingIntegrator;
+
     // Schmitt fault gate. On entry, reset both balance PIDs so windup from
     // before the fault doesn't kick the wheels when the controller re-engages.
+    // _headingIntegrator is deliberately NOT zeroed here — it must keep
+    // tracking truth (∫gyro.z) across the fault so that on exit the held
+    // heading is still accurate. _omegaTargetFiltered IS reset so the LP
+    // filter restarts clean on recovery.
     if (!_inFault && tiltMagSin > cfg.envelopeEnterSin) {
         _inFault = true;
         _pitchPid.reset();
@@ -127,6 +150,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         _yawRatePid.reset();
         _yawSpinActive = false;
         _yawSpinElapsedSec = 0.0f;
+        _omegaTargetFiltered = 0.0f;
     }
     if (_inFault) {
         if (tiltMagSin <= cfg.envelopeExitSin) {
@@ -148,7 +172,9 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
 
     float gyro_pitch_rate = cfg.gyroPitchSign * imuData.gyro.y;
     float gyro_roll_rate  = cfg.gyroRollSign  * imuData.gyro.x;
-    float gyro_yaw_rate   = cfg.gyroYawSign   * imuData.gyro.z;
+    // gyro_yaw_rate already computed and telemetered above the fault gate
+    // (the heading integrator needs it pre-fault). Re-using the same value
+    // here keeps the inner PID's measurement consistent with the integrator.
 
     _lastTelemetry.pitch_target    = pitch_target;
     _lastTelemetry.roll_target     = roll_target;
@@ -156,7 +182,6 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.roll_actual     = roll_actual;
     _lastTelemetry.gyro_pitch_rate = gyro_pitch_rate;
     _lastTelemetry.gyro_roll_rate  = gyro_roll_rate;
-    _lastTelemetry.gyro_yaw_rate   = gyro_yaw_rate;
 
     float vx_out = _pitchPid.compute(pitch_target, pitch_actual, gyro_pitch_rate, dt);
     float vy_out = _rollPid.compute(roll_target,  roll_actual,  gyro_roll_rate,  dt);
@@ -207,21 +232,70 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         }
     }
 
-    // Ship-safe regression guarantee: with both yaw gains == 0, the inner PI
-    // would just emit zero (Kp*err = 0). Bypass it entirely so cmd.omega keeps
-    // its pre-Commit-3 passthrough behavior — operators can disable closed-loop
-    // yaw by zeroing both gains without losing manual stick control.
+    // Outer heading-hold P loop. When the operator's omega stick is in the
+    // deadband, snapshot the current integrated heading (once, on the falling
+    // edge) and compute a clamped P-only rate command to hold it. When out
+    // of deadband, the operator is actively yawing — the loop is bypassed
+    // and cmd.omega becomes the rate setpoint directly. Either way the rate
+    // command is low-pass filtered before feeding the inner yaw-rate PID so
+    // a stick release doesn't hand the inner loop an instantaneous step.
+    //
+    // Ship-safe passthrough and yaw-spin recovery take precedence: in those
+    // branches the outer loop is meaningless. Yaw-spin recovery resets the
+    // LP filter so post-recovery start is clean; passthrough does not (the
+    // operator is driving the loop directly).
     const bool yawLoopDisabled =
         (cfg.yawRateKp == 0.0f) && (cfg.yawRateKi == 0.0f);
     float omega_out;
     if (_yawSpinActive) {
         omega_out = 0.0f;
         _yawRatePid.reset();
+        _omegaTargetFiltered = 0.0f;
+        _headingLatched = false;
     } else if (yawLoopDisabled) {
+        // Passthrough: outer loop is moot if the inner loop isn't running.
         _yawRatePid.reset();
         omega_out = cmd.omega;
+        _omegaTargetFiltered = cmd.omega;
+        _headingLatched = false;
     } else {
-        omega_out = _yawRatePid.compute(cmd.omega, gyro_yaw_rate, dt);
+        float omega_clamped;
+        if (std::fabs(cmd.omega) < HEADING_DEADBAND) {
+            // Hold mode. On falling edge (just entered deadband), snapshot
+            // the current integrator as the new held heading and fire the
+            // edge event. Note: this fires every re-entry into the deadband.
+            if (!_headingLatched) {
+                _headingSetpoint = _headingIntegrator;
+                _headingLatched  = true;
+                _lastTelemetry.event_flags |= kEvent_HEADING_LATCHED;
+            }
+            const float heading_err = _headingSetpoint - _headingIntegrator;
+            const float omega_raw   = cfg.headingKp * heading_err;
+            omega_clamped = clampf(omega_raw,
+                                   -RobotConstants::OMEGA_MAX,
+                                   +RobotConstants::OMEGA_MAX);
+            _lastTelemetry.heading_setpoint = _headingSetpoint;
+            _lastTelemetry.heading_err      = heading_err;
+            _lastTelemetry.heading_P        = cfg.headingKp * heading_err;
+        } else {
+            // Rate passthrough: invalidate the held setpoint so a subsequent
+            // re-entry into the deadband snapshots fresh.
+            _headingLatched = false;
+            omega_clamped = cmd.omega;
+            _lastTelemetry.heading_setpoint =
+                std::numeric_limits<float>::quiet_NaN();
+            _lastTelemetry.heading_err = 0.0f;
+            _lastTelemetry.heading_P   = 0.0f;
+        }
+        // First-order LP: alpha = dt / (tau + dt). Discretization of
+        // y' = (u - y) / tau — bounded, stable, and matches the standard
+        // exponential-tracking response (≈63% of step at one τ).
+        const float alpha = dt / (LP_TAU + dt);
+        _omegaTargetFiltered += alpha * (omega_clamped - _omegaTargetFiltered);
+        _lastTelemetry.omega_target_raw = omega_clamped;
+        _lastTelemetry.omega_target     = _omegaTargetFiltered;
+
+        omega_out = _yawRatePid.compute(_omegaTargetFiltered, gyro_yaw_rate, dt);
     }
 
     _lastTelemetry.yaw_rate_err = _yawRatePid.lastError();
@@ -279,6 +353,10 @@ void BalancingDrivetrainController::stop() {
     _inFault = false;
     _yawSpinActive = false;
     _yawSpinElapsedSec = 0.0f;
+    _headingIntegrator   = 0.0f;
+    _headingSetpoint     = 0.0f;
+    _headingLatched      = true;
+    _omegaTargetFiltered = 0.0f;
 }
 
 void BalancingDrivetrainController::resetIntegrators() {
@@ -300,6 +378,14 @@ void BalancingDrivetrainController::onArmed() {
     _yawRatePid.reset();
     _yawSpinActive = false;
     _yawSpinElapsedSec = 0.0f;
+    // Heading hold engaged from tick 1: integrator and setpoint zeroed,
+    // latch on. The first armed update() in deadband will keep the hold
+    // active; out of deadband, the latch falls and re-latches on stick
+    // release per the steady-state design.
+    _headingIntegrator   = 0.0f;
+    _headingSetpoint     = 0.0f;
+    _headingLatched      = true;
+    _omegaTargetFiltered = 0.0f;
 }
 
 // Armed→Disarmed edge. Mirrors onArmed so wheel PIDs don't carry I/D state
@@ -311,5 +397,9 @@ void BalancingDrivetrainController::onDisarmed() {
     _yawRatePid.reset();
     _yawSpinActive = false;
     _yawSpinElapsedSec = 0.0f;
+    _headingIntegrator   = 0.0f;
+    _headingSetpoint     = 0.0f;
+    _headingLatched      = true;
+    _omegaTargetFiltered = 0.0f;
     _drivetrain.resetPids();
 }

@@ -1,6 +1,6 @@
 # Balance Bench Bring-Up — 2026-05-19
 
-End-to-end bench protocol covering OTA verification, sign-direction tilt check, arming-state cycle, producer-silence backstop, re-arm windup, and fault envelope. Five gating phases — do not progress to phase N+1 until phase N has all "Expected"s matched.
+End-to-end bench protocol covering OTA verification, sign-direction tilt check, arming-state cycle, re-arm windup, and fault envelope. Five gating phases — do not progress to phase N+1 until phase N has all "Expected"s matched.
 
 Each step shows **Expected** behavior and an **Observed** blank for the operator to fill in.
 
@@ -29,16 +29,22 @@ If either prerequisite fails, fix it before flashing — do not proceed without 
 
 ## Phase A — power-on + comms verification (~1–2 min)
 
+**Use the full WebSerial endpoint at `http://bb8-robot.local:81/webserial`, NOT WebSerial Lite.** Lite re-emits buffered input on reconnect, which surfaces as duplicate `ok:` lines from the balance tuner and spurious `error: unknown balance verb` errors during Phase B.
+
+Logging note: `ArmingState` is the single source of truth for transition logs. A successful transition prints exactly one line, formatted `[arming] -> <State>`. Re-issuing the same verb (e.g. `arm` while already Armed) is a FSM no-op and prints nothing — use `armstate` to query.
+
+IMU note: BNO055 runs in **IMUPLUS** mode (gyro + accel fusion, no magnetometer). `isFullyCalibrated()` only checks `gyro==3 && accel==3` — `sys` and `mag` stay at 0 forever and that's expected (the `[cal]` lines still print all four, ignore the last two). Cold-boot expectation: hold chip still (gyro→3 in ~2s), then place on each of 6 cube faces ~10s each (accel→3, ~60s total). Once `[cal] fully calibrated — offsets saved` appears, offsets are persisted to NVS and every subsequent boot fast-paths to `[cal] warm boot — gyro settled, ready` within ~1s. Wipe NVS or swap chips → cold boot again.
+
 | # | Action | Expected | Observed |
 |---|--------|----------|----------|
 | 1 | `pio run -e robot_ota -t upload` | Console: `BB-8 main_robot starting.` and `[arming] boot state: Disarmed` | `[   ]` |
 | 2 | Open WebSerial at `http://bb8-robot.local:81/webserial`; send `armstate` | `[arming] Disarmed` | `[   ]` |
-| 3 | While WebSerial is still connected, kick a second OTA upload | `[ota] update starting` and `[arming] Disarmed` (no-op since already disarmed — confirms the OTA→disarm hook is wired) | `[   ]` |
-| 4a | Send `arm` | `[arming] Armed` | `[   ]` |
-| 4b | Send `kill` | `[arming] Killed` | `[   ]` |
-| 4c | Send `clearkill` | `[arming] Disarmed` | `[   ]` |
-| 4d | Send `arm` | `[arming] Armed` | `[   ]` |
-| 4e | Send `disarm` | `[arming] Disarmed` | `[   ]` |
+| 3 | While WebSerial is still connected, kick a second OTA upload | `[ota] update starting` and `[arming] -> Disarmed` (only if currently Armed; silent no-op otherwise — both confirm the OTA→disarm hook fired) | `[   ]` |
+| 4a | Send `arm` | `[arming] -> Armed` | `[   ]` |
+| 4b | Send `kill` | `[arming] -> Killed` | `[   ]` |
+| 4c | Send `clearkill` | `[arming] clearKill -> Disarmed` | `[   ]` |
+| 4d | Send `arm` | `[arming] -> Armed` | `[   ]` |
+| 4e | Send `disarm` | `[arming] -> Disarmed` | `[   ]` |
 
 Gate: do not proceed unless every Observed matches Expected.
 
@@ -65,7 +71,7 @@ arm
 |---|--------|----------------------------|----------|
 | 1 | Tilt platform front-down / back-up by hand | Wheels roll shell **BACKWARD** → current sign matches sphere/BB-8 spec, **no flip needed**. Wheels roll shell **FORWARD** → Segway model, **flip pitchKp**. | `[   ]` |
 | 2 | Tilt left-side-down | Shell rolls to the **RIGHT** → correct sign (sphere). Shell rolls to the **LEFT** → **flip rollKp**. | `[   ]` |
-| 3 | `disarm` | `[arming] Disarmed` | `[   ]` |
+| 3 | `disarm` | `[arming] -> Disarmed` | `[   ]` |
 
 Record the decision (no flip / flip pitch / flip roll / flip both) in the **Findings** section at the bottom — that data feeds the follow-up B1 PR.
 
@@ -83,20 +89,20 @@ Connect WebSerial. Each row sends a body-frame velocity command `vx vy omega`.
 
 | # | Command | Expected (REP-103) | Observed |
 |---|---------|--------------------|----------|
-| 1 | `0.3 0 0` | Shell rolls **forward** | `[   ]` |
-| 2 | `0 0.3 0` | Shell strafes **LEFT** | `[   ]` |
-| 3 | `0 0 30`  | Shell yaws **LEFT (CCW from above)** | `[   ]` |
+| 1 | `0.3 0 0` | Shell rolls **forward** | **2026-05-19**: rolled **BACKWARD** — pre-fix vx sign was inverted. **Fixed in OmniKinematics.h (vx coefficient `-sin` → `+sin`).** Re-verify after re-flash. |
+| 2 | `0 0.3 0` | Shell strafes **LEFT** | **2026-05-19**: strafed LEFT — correct. |
+| 3 | `0 0 30`  | Shell yaws **LEFT (CCW from above)** | **2026-05-19**: yawed CCW — correct. |
 | 4 | `stop`    | Wheels brake | `[   ]` |
 
-Record any disagreements in the **Findings** section — they feed the follow-up B7 PR.
+Record any further disagreements in the **Findings** section — they feed the follow-up B7 PR. Re-flashing after the vx fix is required before Phase D/E continue.
 
 ---
 
-## Phase D — producer-silence backstop + re-arm windup (`robot_ota` env)
+## Phase D — re-arm windup verification (`robot_ota` env)
 
-**REQUIRED**: robot **ON THE GROUND** (or under wheel load — e.g. shell mass on the platform). Windup-jolt (B3) is invisible on free-spinning wheels. The producer-silence backstop (B4) is observable either way, but co-locate them here to amortize the setup.
+**REQUIRED**: robot **ON THE GROUND** (or under wheel load — e.g. shell mass on the platform). Windup-jolt (B3) is invisible on free-spinning wheels.
 
-**ALSO REQUIRED**: before doing anything else in this phase, open a **second browser window** at `http://bb8-robot.local:81/webserial`. The `armstate` query relies on WebSerial; if you only have the webapp tab open and close it, you lose the channel needed to verify the post-tab-close state.
+Note: the producer-silence auto-disarm backstop (B4) has been **removed**. Armed state now persists until an explicit `disarm`, `kill`, OTA upload, or fault-envelope trip. Short-term silence (<200ms) still ramps drive_cmd to zero via `STALENESS_TIMEOUT_MS`, but the controller stays armed and the wheels hold-zero rather than auto-disarming. If the operator closes the producer tab while armed, the robot remains armed — explicit safety responsibility is on the operator (or the kill switch).
 
 ```
 pio run -e robot_ota -t upload
@@ -104,11 +110,10 @@ pio run -e robot_ota -t upload
 
 | # | Action | Expected | Observed |
 |---|--------|----------|----------|
-| 1 | Open webapp `/control`, connect, click **Arm** (or press `1`), hold `W` for 1 s to send velocity, then close the webapp tab. Wait 3 s. Send `armstate` via the separate WebSerial window. | `[arming] Disarmed` (auto-disarmed by staleness timeout) | `[   ]` |
-| 2 (**B4 verification**) | Reopen webapp, connect, click **Arm**, **IMMEDIATELY** close the tab without sending any velocity. Wait 3 s. Send `armstate` via WebSerial. | Post-fix: `[arming] Disarmed`. Pre-fix bug would report `[arming] Armed` indefinitely. | `[   ]` |
-| 3 (**B3 verification — robot ON GROUND**) | Reopen webapp, connect, click **Arm**, send forward velocity (hold `W`) for ~1 s, click **Disarm**, **immediately** click **Arm** again, send zero velocity (no keys). | Wheels do **NOT** jolt on re-arm — PID integrators were reset on disarm edge. Pre-fix the accumulated I-term would slam wheels on re-arm. | `[   ]` |
+| 1 (**B3 verification — robot ON GROUND**) | Open webapp `/control`, connect, click **Arm**, send forward velocity (hold `W`) for ~1 s, click **Disarm**, **immediately** click **Arm** again, send zero velocity (no keys). | Wheels do **NOT** jolt on re-arm — PID integrators were reset on disarm edge. Pre-fix the accumulated I-term would slam wheels on re-arm. | `[   ]` |
+| 2 | Arm via WebSerial, wait 10+ seconds without sending any velocity. Send `armstate`. | `[arming] Armed` (no auto-disarm — backstop is gone). | `[   ]` |
 
-Gate: B3 and B4 are the safety-critical fixes shipping in this PR. Both must observably match Expected before moving on.
+Gate: B3 is the safety-critical fix shipping in this PR. Must observably match Expected before moving on.
 
 ---
 
@@ -126,7 +131,52 @@ arm
 |---|--------|----------|----------|
 | 1 | Manually tilt past 60° (enter envelope) | Wheels stop: `_drivetrain.drive({0, 0, 0})`, fault latched | `[   ]` |
 | 2 | Return below 55° (exit envelope, Schmitt hysteresis) | Wheels resume balancing | `[   ]` |
-| 3 | `disarm` | `[arming] Disarmed` | `[   ]` |
+| 3 | `disarm` | `[arming] -> Disarmed` | `[   ]` |
+
+---
+
+## Phase F — yaw + heading hold (robot on the ground or in a cradle)
+
+This phase brings up the cascaded yaw controller and the heading-hold outer loop. Run after Phase E. Both loops are off-by-default in firmware shipped before Commit 3 (`yawRateKp=0`, `headingKp=0`); from Commit 4 onward `headingKp=1.0` is the compiled default but `yawRateKp` is still zero — without a non-zero `yawRateKp` the inner PID is bypassed and the outer loop is moot.
+
+Setup:
+
+```
+balance reset
+balance save
+arm
+```
+
+### Phase F1 — yaw-rate sign sanity (cradle, wheels free)
+
+| # | Action | Expected | Observed |
+|---|--------|----------|----------|
+| 1 | `balance set yawRateKp 0.5` | `ok: yawRateKp=0.5` | `[   ]` |
+| 2 | Manually spin the chassis CCW (looking from above) | Wheels drive opposite (CW) to null the spin | `[   ]` |
+| 3 | Manually spin CW | Wheels drive CCW | `[   ]` |
+| 4 | If wheels reinforce the spin (positive feedback): `balance set gyroYawSign -1` | `ok: gyroYawSign=-1` | `[   ]` |
+| 5 | Repeat steps 2–3; confirm corrective behavior | Wheels counteract spin | `[   ]` |
+
+### Phase F2 — yaw-rate gain tuning
+
+| # | Action | Expected | Observed |
+|---|--------|----------|----------|
+| 1 | Operator stick at zero, gently perturb yaw by hand | Crisp recentering with no oscillation | `[   ]` |
+| 2 | If oscillating, lower `yawRateKp` 20%; if sluggish, raise 20% | Settling within ~0.5 s | `[   ]` |
+| 3 | If steady-state heading drift visible, `balance set yawRateKi 0.1` and re-perturb | Drift eliminated, no slow oscillation | `[   ]` |
+| 4 | `balance save` | `ok: saved` | `[   ]` |
+
+### Phase F3 — heading hold (stick centered)
+
+| # | Action | Expected | Observed |
+|---|--------|----------|----------|
+| 1 | Confirm `headingKp` non-zero (default `1.0`); leave stick centered | Bot holds heading; push by hand → wheels return to original yaw | `[   ]` |
+| 2 | Stick to non-zero omega for 2 s, release | Bot turns under stick; on release, holds the **new** heading (no snap-back to pre-stick yaw) | `[   ]` |
+| 3 | Repeat 5× re-latch cycles | No drift, no oscillation between cycles | `[   ]` |
+| 4 | Try arming while shaking the chassis (gyro loud) | `arm` is **refused**; `kEvent_PREARM_REJECTED` fires in telemetry | `[   ]` |
+| 5 | Hold still 500 ms; send `arm` | `[arming] -> Armed`; heading hold engages from tick 1 | `[   ]` |
+| 6 | If hold is too aggressive or oscillating, lower `headingKp` 20%; if drift accumulates, raise 20% | Bot holds at rest within ±2° over 30 s | `[   ]` |
+| 7 | `balance save` | `ok: saved` | `[   ]` |
 
 ---
 
@@ -142,11 +192,12 @@ Use this section to record the bench observations that resolve the deferred ques
 
 ### B7 — drivetrain L/R / yaw convention (from Phase C)
 
-- `0.3 0 0` produced: `[                                ]`
-- `0 0.3 0` produced: `[                                ]`
-- `0 0 30` produced:  `[                                ]`
-- Disagreements vs REP-103: `[                                              ]`
-- Suspected wiring/sign issue: `[                                            ]`
+- `0.3 0 0` produced: **BACKWARD** (2026-05-19) — pre-fix
+- `0 0.3 0` produced: **LEFT** — correct
+- `0 0 30` produced:  **CCW** — correct
+- Disagreements vs REP-103: **vx inverted at the kinematics level** (vy and ω correct)
+- Suspected wiring/sign issue: **kinematics formula vx coefficient sign**. Fixed in `src/drivetrain/OmniKinematics.h` (changed `-_sin[i] * v.vx` → `+_sin[i] * v.vx`). Bench re-verification pending.
+- Note: this is the upstream fix for B7. B1 (controller pitch/roll sign) is now well-defined against the corrected kinematics — re-run Phase B after re-flash to decide whether `pitchKp`/`rollKp` sign flips are also required.
 
 ### General bench notes
 

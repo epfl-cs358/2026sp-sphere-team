@@ -60,6 +60,16 @@ private:
     bool _prevInFault = false;
     bool _yawSpinActive = false;
     float _yawSpinElapsedSec = 0.0f;
+    // Heading-hold outer loop state. Integrator tracks ∫gyro.z*dt across the
+    // session and is preserved across tilt-faults so the held heading remains
+    // correct on recovery. Setpoint is the heading captured the moment the
+    // operator's omega stick last entered the deadband; valid iff
+    // _headingLatched. _omegaTargetFiltered is the LP-filtered (τ=0.15s)
+    // rate-setpoint fed to the inner yaw-rate PID.
+    float _headingIntegrator   = 0.0f;
+    float _headingSetpoint     = 0.0f;
+    bool  _headingLatched      = true;
+    float _omegaTargetFiltered = 0.0f;
     std::atomic<const BalanceConfig*>& _configSlot;
     BalanceTuner* _tuner = nullptr;
     BalanceTelemetry _lastTelemetry{};

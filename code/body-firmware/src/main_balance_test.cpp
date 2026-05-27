@@ -282,12 +282,21 @@ void controlTask(void* /*arg*/) {
             }
         }
 
+        // Single per-tick IMU read shared with the gyro-quiet pre-arm
+        // buffer below; matches main_robot.cpp's pattern.
         const float dt = static_cast<float>(CONTROL_PERIOD_MS) / 1000.0f;
+        IMUReading tick_imu{};
+        bool tick_imu_valid = false;
+        if (arming != ArmingState::State::Killed) {
+            tick_imu = g_imu.read();
+            tick_imu_valid = true;
+            ArmingState::recordGyroZ(tick_imu.gyro.z);
+        }
+
         if (arming == ArmingState::State::Killed) {
             drive_cmd = {0.0f, 0.0f, 0.0f};
         } else if (arming == ArmingState::State::Armed) {
-            IMUReading imu_reading = g_imu.read();
-            g_controller->update(drive_cmd, imu_reading, dt);
+            g_controller->update(drive_cmd, tick_imu, dt);
         } else {
             drive_cmd = {0.0f, 0.0f, 0.0f};
             g_drivetrain.drive(drive_cmd);
@@ -298,18 +307,19 @@ void controlTask(void* /*arg*/) {
         if (arming == ArmingState::State::Armed) {
             t = g_controller->lastTelemetry();
         } else {
-            // Read raw IMU even when disarmed — operator wants to verify before arming.
-            IMUReading imu_reading = g_imu.read();
-            t.quat_w = imu_reading.orientation.w;
-            t.quat_x = imu_reading.orientation.x;
-            t.quat_y = imu_reading.orientation.y;
-            t.quat_z = imu_reading.orientation.z;
-            t.accel_x = imu_reading.linearAccel.x;
-            t.accel_y = imu_reading.linearAccel.y;
-            t.accel_z = imu_reading.linearAccel.z;
-            t.gyro_x_raw = imu_reading.gyro.x;
-            t.gyro_y_raw = imu_reading.gyro.y;
-            t.gyro_z_raw = imu_reading.gyro.z;
+            if (tick_imu_valid) {
+                const IMUReading& imu_reading = tick_imu;
+                t.quat_w = imu_reading.orientation.w;
+                t.quat_x = imu_reading.orientation.x;
+                t.quat_y = imu_reading.orientation.y;
+                t.quat_z = imu_reading.orientation.z;
+                t.accel_x = imu_reading.linearAccel.x;
+                t.accel_y = imu_reading.linearAccel.y;
+                t.accel_z = imu_reading.linearAccel.z;
+                t.gyro_x_raw = imu_reading.gyro.x;
+                t.gyro_y_raw = imu_reading.gyro.y;
+                t.gyro_z_raw = imu_reading.gyro.z;
+            }
             const BalanceConfig snap = g_tuner.snapshot();
             t.pitch_Kp = snap.pitchKp; t.pitch_Ki = snap.pitchKi; t.pitch_Kd = snap.pitchKd;
             t.roll_Kp  = snap.rollKp;  t.roll_Ki  = snap.rollKi;  t.roll_Kd  = snap.rollKd;
@@ -367,6 +377,10 @@ void controlTask(void* /*arg*/) {
                 arming      != ArmingState::State::Killed) {
                 t.event_flags |= kEvent_KILL_CLEARED;
             }
+        }
+
+        if (ArmingState::consumePrearmRejected()) {
+            t.event_flags |= kEvent_PREARM_REJECTED;
         }
 
         BalanceTelemetryWs::publish(t);

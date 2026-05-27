@@ -827,6 +827,215 @@ void test_yaw_pid_resets_on_arm_disarm_stop_and_fault() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, controller->lastTelemetry().yaw_rate_I);
 }
 
+// ---- heading-hold outer loop tests (Commit 4) ----------------------------
+
+// Heading integrator must accumulate ∫gyro.z * dt every tick, regardless of
+// stick mode. With cmd.omega = 1.0 (out of deadband) and gyro.z = 0.1 rad/s
+// over 100 ticks at dt=0.01s, ∫ ≈ 0.1 rad. Tracks truth even when outer
+// loop is bypassed.
+void test_heading_integrator_tracks_gyro_z() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    c.headingKp = 1.0f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 1.0f};  // out of deadband
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 0.1f};
+
+    for (int i = 0; i < 100; ++i) {
+        controller->update(cmd, imuData, 0.01f);
+    }
+
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 0.1f,
+                             controller->lastTelemetry().heading_integrated);
+}
+
+// Out-of-deadband: setpoint invalidated (NaN in telemetry), latched false.
+// In-deadband: setpoint snapshotted to integrator value, latched true.
+void test_stick_out_of_deadband_unlatches_setpoint() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.5f;  // engage the inner loop so the outer loop runs
+    *cfgBuf = c;
+
+    // First, in-deadband with onArmed reset: setpoint == 0 (latched at arm).
+    controller->onArmed();
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    IMUReading level = makeIMU(upright());
+    controller->update(zero, level, 0.01f);
+    TEST_ASSERT_FALSE(std::isnan(controller->lastTelemetry().heading_setpoint));
+
+    // Stick out of deadband for several ticks → NaN.
+    BodyVelocity drive{0.0f, 0.0f, 1.5f};
+    for (int i = 0; i < 5; ++i) {
+        controller->update(drive, level, 0.01f);
+    }
+    TEST_ASSERT_TRUE(std::isnan(controller->lastTelemetry().heading_setpoint));
+}
+
+// Returning to deadband after a drive: setpoint re-latches at the current
+// integrator value, and kEvent_HEADING_LATCHED fires on the relatch tick.
+void test_stick_returns_to_deadband_relatches_at_current_integrator() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.5f;  // engage the inner loop so the outer loop runs
+    *cfgBuf = c;
+
+    controller->onArmed();
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 0.2f};
+
+    // Drive out of deadband while integrator accumulates.
+    BodyVelocity drive{0.0f, 0.0f, 1.5f};
+    for (int i = 0; i < 10; ++i) {
+        controller->update(drive, imuData, 0.01f);
+    }
+    const float integratorBeforeRelatch =
+        controller->lastTelemetry().heading_integrated;
+    TEST_ASSERT_TRUE(std::isnan(controller->lastTelemetry().heading_setpoint));
+
+    // Return to deadband: snapshot fires and event bit is set this tick.
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    controller->update(zero, imuData, 0.01f);
+    TEST_ASSERT_FALSE(std::isnan(controller->lastTelemetry().heading_setpoint));
+    TEST_ASSERT_FLOAT_WITHIN(
+        0.005f, integratorBeforeRelatch + 0.2f * 0.01f,
+        controller->lastTelemetry().heading_setpoint);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags &
+                     kEvent_HEADING_LATCHED);
+
+    // Subsequent in-deadband tick: bit clears (edge-only).
+    controller->update(zero, makeIMU(upright()), 0.01f);
+    TEST_ASSERT_FALSE(controller->lastTelemetry().event_flags &
+                      kEvent_HEADING_LATCHED);
+}
+
+// LP filter with tau=0.15s: step from 0 to a constant outer-P output should
+// reach ~63% after one time constant (≈150 ms ⇒ 15 ticks at 100Hz). We feed
+// the filter directly via a known heading_err and read omega_target.
+void test_lp_filter_reaches_63_percent_after_one_tau() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.0f; c.yawRateKi = 0.0f;  // bypass keeps cmd intact but
+                                              // outer-loop math still runs
+    *cfgBuf = c;
+
+    // Wait — passthrough mode bypasses outer loop. Engage outer loop by
+    // enabling at least one yaw gain.
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    controller->onArmed();
+    // Setpoint = 0 (from arm). Drive integrator so heading_err = -1.0:
+    // arrange gyro.z so omega_clamped tracks ~1.0 in magnitude.
+    // Simpler: drive cmd.omega = 0 with integrator forced to -1 via gyro
+    // accumulation. But headingKp=1, so omega_clamped = setpoint - integrator
+    // = 0 - integrator. Choose gyro.z such that after 1 tick integrator ~
+    // a fixed step is hard. Instead, set headingKp very high and gyro=0
+    // with a manual setpoint via injecting a constant integrator-shift via
+    // a prior tick: hold gyro.z=-100 for 1 tick to push integrator to -1.0,
+    // then 0 gyro. After that, omega_clamped is clamped to OMEGA_MAX.
+    // For LP τ characterization we need a clean step input. Use deadband-out
+    // mode to set omega_clamped = cmd.omega exactly.
+    BodyVelocity drive{0.0f, 0.0f, 1.0f};  // step
+    IMUReading level = makeIMU(upright());
+
+    // First tick: filter steps; sample omega_target across 15 ticks.
+    float lastOmegaTarget = 0.0f;
+    for (int i = 0; i < 15; ++i) {
+        controller->update(drive, level, 0.01f);
+        lastOmegaTarget = controller->lastTelemetry().omega_target;
+    }
+    // After ~150 ms with τ=0.15 s, exp(-1) ≈ 0.368; one minus that ≈ 0.632.
+    TEST_ASSERT_FLOAT_WITHIN(0.06f, 0.632f, lastOmegaTarget);
+}
+
+// Heading P output must be clamped to ±OMEGA_MAX even when Kp * err is huge.
+void test_outer_loop_clamped_to_omega_max() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 100.0f;
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    controller->onArmed();
+    // Force integrator far from setpoint=0 via a single very-high-rate tick
+    // before checking the clamp. Easier: directly set integrator by running
+    // many ticks at controllable gyro.
+    IMUReading drift = makeIMU(upright());
+    drift.gyro = Vec3{0.0f, 0.0f, 10.0f};  // 10 rad/s * 0.01 = 0.1 rad/tick
+    // After 100 ticks, integrator ≈ 10.0 rad. Then heading_P_raw = 100 * (-10)
+    // = -1000, must clamp to -OMEGA_MAX.
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 100; ++i) {
+        controller->update(zero, drift, 0.01f);
+    }
+    // omega_target_raw is the post-clamp value (pre-LP). It should equal
+    // -OMEGA_MAX exactly.
+    TEST_ASSERT_FLOAT_WITHIN(
+        1e-4f, -RobotConstants::OMEGA_MAX,
+        controller->lastTelemetry().omega_target_raw);
+}
+
+// onArmed() resets integrator, setpoint to 0, latches the hold from tick 1.
+void test_onArmed_resets_heading_state() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    // Run drift first.
+    IMUReading drift = makeIMU(upright());
+    drift.gyro = Vec3{0.0f, 0.0f, 0.5f};
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 20; ++i) {
+        controller->update(zero, drift, 0.01f);
+    }
+    TEST_ASSERT_TRUE(std::fabs(controller->lastTelemetry().heading_integrated) > 0.01f);
+
+    controller->onArmed();
+    IMUReading level = makeIMU(upright());
+    controller->update(zero, level, 0.01f);
+
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().heading_integrated);
+    TEST_ASSERT_FALSE(std::isnan(controller->lastTelemetry().heading_setpoint));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().heading_setpoint);
+}
+
+// Tilt-fault entry must NOT zero _headingIntegrator (it must keep tracking
+// truth so when fault clears, the held heading is still accurate).
+// _omegaTargetFiltered IS reset on fault entry.
+void test_tilt_fault_preserves_heading_integrator() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    controller->onArmed();
+    // Build integrator to a known value.
+    IMUReading drift = makeIMU(upright());
+    drift.gyro = Vec3{0.0f, 0.0f, 0.5f};
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 100; ++i) {
+        controller->update(zero, drift, 0.01f);
+    }
+    const float integratorBeforeFault =
+        controller->lastTelemetry().heading_integrated;
+    TEST_ASSERT_TRUE(std::fabs(integratorBeforeFault) > 0.4f);
+
+    // Trip fault at 65° (gyro stays zeroed to isolate integrator behavior).
+    IMUReading bad = makeIMU(pitchedForward(65.0f * 3.14159265f / 180.0f));
+    bad.gyro = Vec3{0.0f, 0.0f, 0.0f};
+    controller->update(zero, bad, 0.01f);
+
+    // Integrator unchanged (gyro.z=0 in fault tick, plus no reset).
+    TEST_ASSERT_FLOAT_WITHIN(
+        0.01f, integratorBeforeFault,
+        controller->lastTelemetry().heading_integrated);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_command_level_platform_emits_zero);
@@ -862,5 +1071,12 @@ int main() {
     RUN_TEST(test_yaw_spin_recovery_fires_exactly_once_across_ticks);
     RUN_TEST(test_yaw_spin_recovery_clears_when_rate_drops);
     RUN_TEST(test_yaw_pid_resets_on_arm_disarm_stop_and_fault);
+    RUN_TEST(test_heading_integrator_tracks_gyro_z);
+    RUN_TEST(test_stick_out_of_deadband_unlatches_setpoint);
+    RUN_TEST(test_stick_returns_to_deadband_relatches_at_current_integrator);
+    RUN_TEST(test_lp_filter_reaches_63_percent_after_one_tau);
+    RUN_TEST(test_outer_loop_clamped_to_omega_max);
+    RUN_TEST(test_onArmed_resets_heading_state);
+    RUN_TEST(test_tilt_fault_preserves_heading_integrator);
     return UNITY_END();
 }
