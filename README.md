@@ -55,8 +55,8 @@ The robot:
 | BMS | 3S 60A | Protects the LiPo | Course provided |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
 | Servo | SG90 | Changes the angle of the camera | Course provided |
-| Head Battery | Li-Ion Battery 3.7V 3200mA NCR18650B 18650 with Flat Top |  | [Bastel Garage](https://www.bastelgarage.ch/li-ion-battery-3-7v-3200ma-ncr18650b-18650-with-flat-top) |
-| Head Battery shield | 1x18650 Lithium Battery Shield 5V 3A / 3V 1A |  | [Bastel Garage](https://www.bastelgarage.ch/1x18650-lithium-battery-shield-5v-3a-3v-1a) |
+| Head Battery | Li-Ion Battery 3.7V 3200mA NCR18650B 18650 with Flat Top | Battery for servo and camera | [Bastel Garage](https://www.bastelgarage.ch/li-ion-battery-3-7v-3200ma-ncr18650b-18650-with-flat-top) |
+| Head Battery shield | 1x18650 Lithium Battery Shield 5V 3A / 3V 1A | TO connect the head battery  | [Bastel Garage](https://www.bastelgarage.ch/1x18650-lithium-battery-shield-5v-3a-3v-1a) |
 
 
 ### Mechanical Parts (Body)
