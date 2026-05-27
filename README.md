@@ -53,7 +53,7 @@ The robot:
 | Battery | LiPo | 5000mAh / 3S = 11V | Course provided |
 | BMS | [TODO: model] | Protects the LiPo | Course provided |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
-| Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) | hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
+| Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
 
 !! ball bearing || SERVO 
 
