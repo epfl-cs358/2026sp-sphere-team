@@ -52,16 +52,17 @@ The robot:
 | Motor drivers (×3) | L298N H-bridge modules | One channel per motor | Course provided |
 | IMU | Adafruit BNO055 | 9-DOF with built-in sensor fusion, I²C address 0x28 | [Bastel Garage](https://www.bastelgarage.ch/bno055-intelligent-9-axis-sensor) |
 | Battery | LiPo | 5000mAh / 3S = 11V | Course provided |
-| BMS | [TODO: model] | Protects the LiPo | Course provided |
+| BMS | 3S 60A | Protects the LiPo | Course provided |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
 | Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
+| Servo | SG90 | Changes the angle of the camera | Course provided |
 
-!! ball bearing || SERVO 
 
+### Mechanical Parts (Body)
 
 | Part | Material | Notes | File |
 |---|---|---| --- |
-| Omni wheels (×3), ~9.25 cm diameter | PETG/TPU  (3D printed) | | |
+| Omni wheels (×3), ~9.25 cm diameter | PETG/TPU  (3D printed) | | [Omniwheel](./README_files/Omniwheel) |
 | Metal sticks (x15), 3mmx35mm | Steel (any metal can be used) |  Metals parts used to hold the omni wheels assembly |  |
 | Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | [Motor Holder](./README_files/Motor%20holder.step) |
 | Internal plates | MDF (laser-cut) | Structure for the electronical components | [Bottom](./README_files/Internal%20Plate%20(Bottom).step) [Side for LiPo](./README_files/Internal%20Plate%20(Side%20for%20LiPo).step) [Side](./README_files/Internal%20Plate%20(Side).step) [Top](./README_files/internal%20Plate%20(Top).step) |
@@ -79,6 +80,8 @@ The robot:
 | Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |  |
 | Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing | [123Roulement](https://www.123roulement.ch/accessoire/bille-aiguille/bille/ba-14-aisi304) |
 | Head shell | PETG (3D printed) | Holds the camera and magnets |  |
+| Servo Holder | PETG (3D printed) | Holds the servo for the camera |  |
+| Camera Holder | PETG (3D printed) |  |  |
 ---
 
 ## Build the Robot
@@ -88,7 +91,10 @@ The robot:
 The sphere is what the wheels push against, so it needs to be round, rigid, and smooth on the inside. Inner radius is ~17.5 cm (35 cm diameter), matching the `ROBOT_RADIUS` constant in the firmware.
 
 1. 3D print the two hemispheres (top and bottom) in PETG on a large-format printer (e.g. Prusa XL).
-2. [TODO: slicer settings — layer height, walls, infill, supports]
+2. Set the slicer with the PETG optimal profile for your printer, using:
+- Perimeters: 4
+- Infill: 15%
+- Supports: Organic supports, enabled for overhangs above 60°
 3. Sand the inside of each hemisphere until it feels smooth. This is what gives the wheels good grip.
 4. Only join the two hemispheres at the very end, once the chassis is in place inside.
 <img width="285" height="379" alt="image" src="https://github.com/user-attachments/assets/adb60fc4-800e-4eca-8d98-96ad8852bf2b" />
