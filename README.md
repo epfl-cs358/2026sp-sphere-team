@@ -142,6 +142,7 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 <img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
 
 
+
 **Motor drivers (L298N)**
 
 | Motor | ESP32 GPIO (forward) | ESP32 GPIO (reverse) |
