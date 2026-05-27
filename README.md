@@ -193,7 +193,9 @@ The head houses the XIAO Vision AI Camera and its own small LiPo. It joins the s
 2. Mount the camera with the lens facing forward.
 3. Wire the head LiPo through its own BMS and buck converter to the camera's 5 V input.
 
-[TODO: photo of the head opened]
+<img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_2" src="https://github.com/user-attachments/assets/1a81bb35-2e34-4934-b3ee-e37bdb1afe4e" />
+<img width="1200" height="1600" alt="PHOTO-2026-05-15-12-07-36_3" src="https://github.com/user-attachments/assets/6fa49cb2-cbee-4cb5-b089-f7dacbb90b03" />
+
 
 ### Magnetic Head Mount
 
