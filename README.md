@@ -43,29 +43,46 @@ The robot:
 
 ### Electronic Components
 
-| Component | Part | Notes |
-|---|---|---|
-| Microcontroller (body) | ESP32 Wemos D1 R32 / UNO32 | Runs the control loop and the WebSocket server |
-| Camera (head) | XIAO Vision AI Camera (Seeed Studio) | Streams video from the head |
-| Motors (×3) | DFRobot FIT0186 | 12 V DC gear motors with encoders, one per omni wheel |
-| Motor drivers (×3) | L298N H-bridge modules | One channel per motor |
-| IMU | Adafruit BNO055 | 9-DOF with built-in sensor fusion, I²C address 0x28 |
-| Battery | LiPo | [TODO: capacity/voltage] |
-| BMS | [TODO: model] | Protects the LiPo |
-| Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 |
-| Magnets | Neodymium | [TODO: dimensions] — hold the head onto the sphere |
+| Component | Part | Notes | Link |
+|---|---|---|---|
+| Microcontroller (body) | ESP32 Wemos D1 R32 / UNO32 | Runs the control loop and the WebSocket server | Course provided |
+| Camera (head) | XIAO Vision AI Camera (Seeed Studio) | Streams video from the head | [Digikey](https://www.digikey.ch/de/products/detail/seeed-technology-co-ltd/102010635/26553888?gclsrc=aw.ds&gad_source=1&gad_campaignid=23648664371&gbraid=0AAAAADrbLlgfsbqUJlMFRLgHC9VhafRgX&gclid=Cj0KCQjwm6POBhCrARIsAIG58CKoRNC8lP7SramCpo4bx8WypJQ6x6bo5LUtMgXISv5xn2gV4Q7les8aAh8cEALw_wcB) |
+| Motors (×3) | DFRobot FIT0186 | 12 V DC gear motors with encoders, one per omni wheel | [Bastel Garage](https://www.bastelgarage.ch/moteur-a-engrenages-dc-12v-251rpm-18kg-cm-avec-encodeur?search=Moteur%20DC%2012V%20251RPM%20) |
+| Motor drivers (×3) | L298N H-bridge modules | One channel per motor | Course provided |
+| IMU | Adafruit BNO055 | 9-DOF with built-in sensor fusion, I²C address 0x28 | [Bastel Garage](https://www.bastelgarage.ch/bno055-intelligent-9-axis-sensor) |
+| Battery | LiPo | 5000mAh / 3S = 11V | Course provided |
+| BMS | [TODO: model] | Protects the LiPo | Course provided |
+| Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 | Course provided |
+| Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N)|
 
-<img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
+!! ball bearing || SERVO 
 
-### Mechanical Parts
 
-| Part | Material | Notes |
-|---|---|---|
-| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape |
-| Internal chassis | MDF (laser-cut) | Holds the 3 motors at 120°, tilted inward by 30° |
-| Omni wheels (×3), ~9.25 cm diameter | PETG (3D printed) | |
-| Head shell | PETG (3D printed) | Holds the camera and magnets |
-| Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |
+### Mechanical Parts (Body)
+
+| Part | Material | Notes | File |
+|---|---|---| --- |
+| Omni wheels (×3), ~9.25 cm diameter | PETG/TPU  (3D printed) | |  |
+| Metal sticks (x15), 3mmx35mm | Steel (any metal can be used) |  Metals parts used to hold the omni wheels assembly |  |
+| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | |
+| Internal plates | MDF (laser-cut) | Structure for the electronical components |  |
+| BMS Box | PETG (3D printed)  |  |  |
+| Tube Holder | PETG (3D printed) | Holds the tube for the magnets |  
+| 2 metal pipes (1.5mm(external diamateter) x 60mm & 2.5mm(external diamateter) x 200mm)| Aluminium (any metal can be used) | Tubes to hold and adjust the magnet holder and upper ball bearing |  |
+| Hose clamp | PETG (3D printed) | Made to hold the bard in the body and make the magnets height adjustable |  |
+| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place |  |
+| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place |  |
+| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape |  |
+
+
+### Mechanical Parts (Head)
+
+| Part | Material | Notes | File 
+|---|---|---| --- |
+| Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |  |
+| Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing |  |
+| Head shell | PETG (3D printed) | Holds the camera and magnets |  |
+
 
 ---
 
@@ -100,6 +117,10 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 3. Check the rolling direction. Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
 
 ### Electronics Assembly
+
+**Electronics schematics**
+<img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
+
 
 **Motor drivers (L298N)**
 
