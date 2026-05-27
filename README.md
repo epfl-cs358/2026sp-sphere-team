@@ -10,6 +10,8 @@ A spherical robot inspired by BB-8. CS-358 final project, EPFL.
 
 It is a spherical robot inspired by BB-8 from Star Wars. A 3D-printed shell rolls on the ground, driven from the inside by a small chassis with three omnidirectional wheels. On top of the sphere, a separate "head" is held only by magnets, so it can rotate freely as the sphere moves. The head carries a camera.
 
+You can fin the full detailed CAD here : 
+
 The robot:
 
 - Rolls in any direction using 3 omni wheels at 120° spacing, tilted inward at 30° against the inside of the sphere.
