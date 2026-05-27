@@ -5,6 +5,7 @@
 #include <unity.h>
 #include <atomic>
 #include <cmath>
+#include <limits>
 
 #include <fff.h>
 DEFINE_FFF_GLOBALS;
@@ -72,11 +73,16 @@ static BalanceConfig makeTestConfig() {
         .maxTiltSetpoint   = 0.35f,
         .pitchKp = 2.0f, .pitchKi = 0.0f, .pitchKd = 0.0f,
         .rollKp  = 2.0f, .rollKi  = 0.0f, .rollKd  = 0.0f,
+        .pitchDeadband     = 0.0f,
+        .rollDeadband      = 0.0f,
         .maxOutputVelocity = 1.0f,
         .envelopeEnterSin  = std::sin(60.0f * 3.14159265f / 180.0f),
         .envelopeExitSin   = std::sin(55.0f * 3.14159265f / 180.0f),
         .gyroPitchSign     = 1.0f,
         .gyroRollSign      = 1.0f,
+        .yawRateKp = 0.0f, .yawRateKi = 0.0f, .yawRateKd = 0.0f,
+        .headingKp         = 0.0f,
+        .gyroYawSign       = 1.0f,
     };
 }
 
@@ -612,6 +618,161 @@ void test_stop_resets_pid_state_and_calls_drivetrain_stop() {
     TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.0f, drivetrain->lastDrive.vy);
 }
 
+// ---- yaw-rate inner PID tests (Commit 3) ---------------------------------
+
+void test_yaw_passthrough_when_kp_zero() {
+    // Ship-safe regression: cfg.yawRateKp = 0 ⇒ cmd.omega passes through.
+    BodyVelocity cmd{0.0f, 0.0f, 1.5f};
+    IMUReading imuData = makeIMU(upright());
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.5f, drivetrain->lastDrive.omega);
+}
+
+void test_yaw_closed_loop_counteracts_spin() {
+    // cfg.yawRateKp = 0.5, cmd.omega = 0, gyro.z = +1 rad/s, gyroYawSign = +1.
+    // Inner PID drives drivetrain omega NEGATIVE to null measured rate.
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 1.0f};
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.omega < 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, -0.5f, drivetrain->lastDrive.omega);
+}
+
+void test_yaw_gyro_sign_inverts_loop() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp    = 0.5f;
+    c.gyroYawSign  = -1.0f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 1.0f};
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.omega > 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.5f, drivetrain->lastDrive.omega);
+}
+
+void test_nan_orientation_skips_drive() {
+    BodyVelocity cmd{0.1f, 0.2f, 0.3f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.orientation.w = std::numeric_limits<float>::quiet_NaN();
+
+    int driveCountBefore = drivetrain->driveCallCount;
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_EQUAL(driveCountBefore, drivetrain->driveCallCount);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_IMU_INVALID);
+}
+
+void test_nan_gyro_z_skips_drive() {
+    BodyVelocity cmd{0.1f, 0.2f, 0.3f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, std::numeric_limits<float>::quiet_NaN()};
+
+    int driveCountBefore = drivetrain->driveCallCount;
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_EQUAL(driveCountBefore, drivetrain->driveCallCount);
+    TEST_ASSERT_TRUE(controller->lastTelemetry().event_flags & kEvent_IMU_INVALID);
+}
+
+void test_yaw_spin_recovery_triggers_after_100ms() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 15.0f};  // 15 rad/s > 12.566 threshold
+
+    bool recoveryFired = false;
+    for (int i = 0; i < 11; ++i) {
+        controller->update(cmd, imuData, 0.01f);
+        if (controller->lastTelemetry().event_flags & kEvent_YAW_SPIN_RECOVERY) {
+            recoveryFired = true;
+        }
+    }
+    TEST_ASSERT_TRUE(recoveryFired);
+    // Once spin is active, omega forced to 0.
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.0f, drivetrain->lastDrive.omega);
+}
+
+void test_yaw_spin_recovery_clears_when_rate_drops() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading spin = makeIMU(upright());
+    spin.gyro = Vec3{0.0f, 0.0f, 15.0f};
+    for (int i = 0; i < 11; ++i) {
+        controller->update(cmd, spin, 0.01f);
+    }
+
+    // Drop to quiet: recovery should clear after sustained below-threshold.
+    IMUReading quiet = makeIMU(upright());
+    quiet.gyro = Vec3{0.0f, 0.0f, 1.0f};
+    for (int i = 0; i < 11; ++i) {
+        controller->update(cmd, quiet, 0.01f);
+    }
+
+    // After recovery clears, the inner PID resumes: cmd.omega=0, gyro.z=+1
+    // expected omega_out = -0.5.
+    TEST_ASSERT_TRUE(drivetrain->lastDrive.omega < 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, -0.5f, drivetrain->lastDrive.omega);
+}
+
+void test_yaw_pid_resets_on_arm_disarm_stop_and_fault() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    c.yawRateKi = 1.0f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 1.0f};
+
+    // Wind up yaw integrator.
+    auto windUp = [&]() {
+        for (int i = 0; i < 5; ++i) {
+            controller->update(cmd, imuData, 0.01f);
+        }
+        TEST_ASSERT_TRUE(std::fabs(controller->lastTelemetry().yaw_rate_I) > 0.0f);
+    };
+
+    windUp();
+    controller->onArmed();
+    IMUReading level = makeIMU(upright());
+    controller->update(BodyVelocity{0,0,0}, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, controller->lastTelemetry().yaw_rate_I);
+
+    windUp();
+    controller->onDisarmed();
+    controller->update(BodyVelocity{0,0,0}, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, controller->lastTelemetry().yaw_rate_I);
+
+    windUp();
+    controller->stop();
+    controller->update(BodyVelocity{0,0,0}, level, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, controller->lastTelemetry().yaw_rate_I);
+
+    // Fault entry: tilt past envelope must reset yaw PID too.
+    windUp();
+    IMUReading bad = makeIMU(pitchedForward(65.0f * 3.14159265f / 180.0f));
+    bad.gyro = Vec3{0.0f, 0.0f, 0.0f};
+    controller->update(BodyVelocity{0,0,0}, bad, 0.01f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, controller->lastTelemetry().yaw_rate_I);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_command_level_platform_emits_zero);
@@ -636,5 +797,13 @@ int main() {
     RUN_TEST(test_set_tuner_consumes_pending_events);
     RUN_TEST(test_set_tuner_null_skips_consume);
     RUN_TEST(test_stop_resets_pid_state_and_calls_drivetrain_stop);
+    RUN_TEST(test_yaw_passthrough_when_kp_zero);
+    RUN_TEST(test_yaw_closed_loop_counteracts_spin);
+    RUN_TEST(test_yaw_gyro_sign_inverts_loop);
+    RUN_TEST(test_nan_orientation_skips_drive);
+    RUN_TEST(test_nan_gyro_z_skips_drive);
+    RUN_TEST(test_yaw_spin_recovery_triggers_after_100ms);
+    RUN_TEST(test_yaw_spin_recovery_clears_when_rate_drops);
+    RUN_TEST(test_yaw_pid_resets_on_arm_disarm_stop_and_fault);
     return UNITY_END();
 }

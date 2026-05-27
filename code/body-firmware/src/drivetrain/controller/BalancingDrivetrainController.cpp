@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "BalanceTuner.h"
+#include "RobotConstants.h"
 #include "quatToBodyGravity.h"
 
 namespace {
@@ -34,6 +35,7 @@ BalancingDrivetrainController::BalancingDrivetrainController(
                configSlot.load(std::memory_order_acquire)->rollKd,
                -configSlot.load(std::memory_order_acquire)->maxOutputVelocity,
                +configSlot.load(std::memory_order_acquire)->maxOutputVelocity),
+      _yawRatePid(0.0f, 0.0f, 0.0f, -RobotConstants::OMEGA_MAX, +RobotConstants::OMEGA_MAX),
       _configSlot(configSlot) {}
 
 void BalancingDrivetrainController::update(const BodyVelocity& cmd,
@@ -41,10 +43,26 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
                                            float dt) {
     const BalanceConfig& cfg = *_configSlot.load(std::memory_order_acquire);
 
+    // Top-of-update IMU validity guard. A NaN quaternion or gyro.z would
+    // poison every downstream math op (quatToBodyGravity → tilt → PID), and
+    // the PID's BB8_ASSERT would abort. Skipping the drivetrain write is
+    // safer than driving on garbage; persistent NaNs surface as a continuous
+    // kEvent_IMU_INVALID stream in telemetry.
+    const Quat& q = imuData.orientation;
+    if (!std::isfinite(q.w) || !std::isfinite(q.x) || !std::isfinite(q.y) ||
+        !std::isfinite(q.z) || !std::isfinite(imuData.gyro.z)) {
+        _lastTelemetry = BalanceTelemetry{};
+        _lastTelemetry.dt_used     = dt;
+        _lastTelemetry.event_flags = kEvent_IMU_INVALID;
+        _lastTelemetry.in_fault    = _inFault ? 1 : 0;
+        return;
+    }
+
     // Push live-tuned gains into the PIDs every tick. setGains is a 3-float
     // mutation; cost is negligible vs. allowing tuner edits to take effect.
     _pitchPid.setGains(cfg.pitchKp, cfg.pitchKi, cfg.pitchKd);
     _rollPid.setGains(cfg.rollKp, cfg.rollKi, cfg.rollKd);
+    _yawRatePid.setGains(cfg.yawRateKp, cfg.yawRateKi, cfg.yawRateKd);
     _pitchPid.setDeadband(cfg.pitchDeadband);
     _rollPid.setDeadband(cfg.rollDeadband);
 
@@ -105,6 +123,9 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         _inFault = true;
         _pitchPid.reset();
         _rollPid.reset();
+        _yawRatePid.reset();
+        _yawSpinActive = false;
+        _yawSpinElapsedSec = 0.0f;
     }
     if (_inFault) {
         if (tiltMagSin <= cfg.envelopeExitSin) {
@@ -126,6 +147,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
 
     float gyro_pitch_rate = cfg.gyroPitchSign * imuData.gyro.y;
     float gyro_roll_rate  = cfg.gyroRollSign  * imuData.gyro.x;
+    float gyro_yaw_rate   = cfg.gyroYawSign   * imuData.gyro.z;
 
     _lastTelemetry.pitch_target    = pitch_target;
     _lastTelemetry.roll_target     = roll_target;
@@ -133,6 +155,7 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.roll_actual     = roll_actual;
     _lastTelemetry.gyro_pitch_rate = gyro_pitch_rate;
     _lastTelemetry.gyro_roll_rate  = gyro_roll_rate;
+    _lastTelemetry.gyro_yaw_rate   = gyro_yaw_rate;
 
     float vx_out = _pitchPid.compute(pitch_target, pitch_actual, gyro_pitch_rate, dt);
     float vy_out = _rollPid.compute(roll_target,  roll_actual,  gyro_roll_rate,  dt);
@@ -155,6 +178,56 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     _lastTelemetry.pitch_out = vx_out;
     _lastTelemetry.roll_out  = vy_out;
 
+    // Yaw-spin recovery: edge-triggered latch on sustained over-threshold
+    // |gyro_yaw_rate|. Exit symmetrically — once the elapsed-counter rolls
+    // past the trip window in the OTHER direction, clear the latch.
+    const float yawSpinTripSec = static_cast<float>(RobotConstants::YAW_SPIN_TRIP_MS) / 1000.0f;
+    const bool aboveSpinThreshold = std::fabs(gyro_yaw_rate) > RobotConstants::YAW_SPIN_THRESHOLD;
+    if (aboveSpinThreshold) {
+        if (_yawSpinActive) {
+            _yawSpinElapsedSec = yawSpinTripSec;
+        } else {
+            _yawSpinElapsedSec += dt;
+            if (_yawSpinElapsedSec >= yawSpinTripSec) {
+                _yawSpinActive = true;
+                _lastTelemetry.event_flags |= kEvent_YAW_SPIN_RECOVERY;
+            }
+        }
+    } else {
+        if (_yawSpinActive) {
+            _yawSpinElapsedSec -= dt;
+            if (_yawSpinElapsedSec <= 0.0f) {
+                _yawSpinActive = false;
+                _yawSpinElapsedSec = 0.0f;
+            }
+        } else {
+            _yawSpinElapsedSec = 0.0f;
+        }
+    }
+
+    // Ship-safe regression guarantee: with all yaw gains == 0, the inner PID
+    // would just emit zero (Kp*err = 0). Bypass it entirely so cmd.omega keeps
+    // its pre-Commit-3 passthrough behavior — operators can disable closed-loop
+    // yaw by zeroing all three gains without losing manual stick control.
+    const bool yawLoopDisabled =
+        (cfg.yawRateKp == 0.0f) && (cfg.yawRateKi == 0.0f) && (cfg.yawRateKd == 0.0f);
+    float omega_out;
+    if (_yawSpinActive) {
+        omega_out = 0.0f;
+        _yawRatePid.reset();
+    } else if (yawLoopDisabled) {
+        _yawRatePid.reset();
+        omega_out = cmd.omega;
+    } else {
+        omega_out = _yawRatePid.compute(cmd.omega, gyro_yaw_rate, dt);
+    }
+
+    _lastTelemetry.yaw_rate_err = _yawRatePid.lastError();
+    _lastTelemetry.yaw_rate_P   = _yawRatePid.lastP();
+    _lastTelemetry.yaw_rate_I   = _yawRatePid.lastI();
+    _lastTelemetry.yaw_rate_D   = _yawRatePid.lastD();
+    _lastTelemetry.yaw_rate_out = omega_out;
+
     // Sphere sign convention (B1, resolved): for BB-8's internal drive,
     // tilting the body forward (pitch > 0) requires the shell to roll
     // BACKWARD to push the payload back over its base. Standard PID gives
@@ -168,8 +241,8 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
     // coincidence.
     _lastTelemetry.body_vx_cmd    = -vx_out;
     _lastTelemetry.body_vy_cmd    = -vy_out;
-    _lastTelemetry.body_omega_cmd = cmd.omega;
-    _drivetrain.drive(BodyVelocity{-vx_out, -vy_out, cmd.omega});
+    _lastTelemetry.body_omega_cmd = omega_out;
+    _drivetrain.drive(BodyVelocity{-vx_out, -vy_out, omega_out});
     _finalizeTelemetry();
 }
 
@@ -178,7 +251,8 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
 // from both the normal exit and the in-fault early return so event bits and
 // state always reflect the just-completed tick.
 void BalancingDrivetrainController::_finalizeTelemetry() {
-    uint32_t flags = 0;
+    // OR onto preserved bits set inline during update() (yaw-spin edge).
+    uint32_t flags = _lastTelemetry.event_flags;
     if (!_prevInFault && _inFault) flags |= kEvent_FAULT_ENTER;
     if (_prevInFault && !_inFault) flags |= kEvent_FAULT_EXIT;
     if (_pitchPid.wasISaturated())     flags |= kEvent_PITCH_I_SATURATED;
@@ -187,6 +261,8 @@ void BalancingDrivetrainController::_finalizeTelemetry() {
     if (_rollPid.wasOutSaturated())    flags |= kEvent_ROLL_OUT_SATURATED;
     if (_pitchPid.wasDeadbandReset())  flags |= kEvent_PITCH_DEADBAND_RESET;
     if (_rollPid.wasDeadbandReset())   flags |= kEvent_ROLL_DEADBAND_RESET;
+    if (_yawRatePid.wasISaturated())   flags |= kEvent_YAW_RATE_I_SATURATED;
+    if (_yawRatePid.wasOutSaturated()) flags |= kEvent_YAW_RATE_OUT_SATURATED;
     if (_tuner != nullptr)             flags |= _tuner->consumePending();
     _lastTelemetry.event_flags = flags;
     _lastTelemetry.in_fault    = _inFault ? 1 : 0;
@@ -197,12 +273,16 @@ void BalancingDrivetrainController::stop() {
     _drivetrain.stop();
     _pitchPid.reset();
     _rollPid.reset();
+    _yawRatePid.reset();
     _inFault = false;
+    _yawSpinActive = false;
+    _yawSpinElapsedSec = 0.0f;
 }
 
 void BalancingDrivetrainController::resetIntegrators() {
     _pitchPid.reset();
     _rollPid.reset();
+    _yawRatePid.reset();
 }
 
 // Disarmed→Armed edge. Wheel PIDs accumulated _prevMeasurement and _integral
@@ -215,6 +295,9 @@ void BalancingDrivetrainController::onArmed() {
     _drivetrain.resetPids();
     _pitchPid.reset();
     _rollPid.reset();
+    _yawRatePid.reset();
+    _yawSpinActive = false;
+    _yawSpinElapsedSec = 0.0f;
 }
 
 // Armed→Disarmed edge. Mirrors onArmed so wheel PIDs don't carry I/D state
@@ -223,5 +306,8 @@ void BalancingDrivetrainController::onArmed() {
 void BalancingDrivetrainController::onDisarmed() {
     _pitchPid.reset();
     _rollPid.reset();
+    _yawRatePid.reset();
+    _yawSpinActive = false;
+    _yawSpinElapsedSec = 0.0f;
     _drivetrain.resetPids();
 }

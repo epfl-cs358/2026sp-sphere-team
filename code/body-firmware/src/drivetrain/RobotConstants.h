@@ -12,6 +12,15 @@ constexpr float ROBOT_RADIUS  = 0.1745f;    // center to wheel contact, in meter
 constexpr float TILT_ANGLE    = 30.0f * static_cast<float>(M_PI) / 180.0f;
 constexpr float MAX_RPM       = 251.0f;
 
+// Yaw control envelope. OMEGA_MAX bounds inner yaw-rate PID output and (in
+// Commit 4) clamps the outer heading-P output before it feeds the inner loop.
+// YAW_SPIN_THRESHOLD is the |gyro.z| above which the controller assumes a
+// runaway spin (720 deg/s ≈ 12.566 rad/s); sustained for YAW_SPIN_TRIP_MS the
+// recovery latch fires and omega is forced to 0 until rate drops back below.
+constexpr float    OMEGA_MAX             = 3.5f;     // rad/s (~200 dps)
+constexpr float    YAW_SPIN_THRESHOLD    = 12.566f;  // rad/s (~720 dps)
+constexpr uint32_t YAW_SPIN_TRIP_MS      = 100;
+
 // Teleop control-loop timing.
 constexpr uint32_t STALENESS_TIMEOUT_MS = 200;   // ramp-to-zero window on silence
 constexpr uint32_t CONTROL_PERIOD_MS    = 10;    // 100 Hz tick

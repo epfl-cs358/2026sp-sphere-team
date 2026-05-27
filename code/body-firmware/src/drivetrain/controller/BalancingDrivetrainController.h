@@ -55,8 +55,11 @@ private:
 
     PID  _pitchPid;
     PID  _rollPid;
+    PID  _yawRatePid;
     bool _inFault = false;
     bool _prevInFault = false;
+    bool _yawSpinActive = false;
+    float _yawSpinElapsedSec = 0.0f;
     std::atomic<const BalanceConfig*>& _configSlot;
     BalanceTuner* _tuner = nullptr;
     BalanceTelemetry _lastTelemetry{};
