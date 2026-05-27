@@ -2,13 +2,13 @@
 
 <img width="326" height="500" alt="WhatsApp Image 2026-05-27 at 22 32 17" src="https://github.com/user-attachments/assets/235ac963-14b6-4ab2-a806-31db804c82da" />
 
-A self-contained spherical robot inspired by BB-8. CS-358 final project, EPFL.
+A spherical robot inspired by BB-8. CS-358 final project, EPFL.
 
 ---
 
 ## Project Overview
 
-It is a self-contained spherical robot inspired by BB-8 from Star Wars. A 3D-printed shell rolls on the ground, driven from the inside by a small chassis with three omnidirectional wheels. On top of the sphere, a separate "head" is held only by magnets, so it can rotate freely as the sphere moves. The head carries a camera.
+It is a spherical robot inspired by BB-8 from Star Wars. A 3D-printed shell rolls on the ground, driven from the inside by a small chassis with three omnidirectional wheels. On top of the sphere, a separate "head" is held only by magnets, so it can rotate freely as the sphere moves. The head carries a camera.
 
 The robot:
 
