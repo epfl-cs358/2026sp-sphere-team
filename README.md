@@ -133,7 +133,7 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 
 1. 3D Print every file in the [Omniwheel](./README_files/Omniwheel) folder. Note that the material that should be used is in the file name.
 2. Follow the following steps : https://github.com/epfl-cs358/2026sp-sphere-team/issues/80
-4. Check the rolling direction. Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
+4. Check the rolling direction. Choose one motor to be the front of your robot :  Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
 
 ### Electronics Assembly
 
