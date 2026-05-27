@@ -188,7 +188,7 @@ LiPo ──┬── BMS ──┬── 12 V ──── L298N supply (×3)
 
 ### Head and Camera
 
-The head houses the XIAO Vision AI Camera and its own small LiPo. It joins the same Wi-Fi as the body but streams video separately.
+The head houses the XIAO Vision AI Camera and its own battery. It joins the same Wi-Fi as the body but streams video separately.
 
 1. 3D print the [Head Shell](./README_files/Head/Head%20Shell.step), the [Servo Holder](./README_files/Head/Servo_Holder.step) and the [Camera Holder](./README_files/Head/Camera_Holder.step).
 2. Screw the servo on the Servo holder.
