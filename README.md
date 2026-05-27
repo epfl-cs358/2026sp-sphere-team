@@ -64,24 +64,24 @@ The robot:
 |---|---|---| --- |
 | Omni wheels (×3), ~9.25 cm diameter | PETG/TPU  (3D printed) | | [Omniwheel](./README_files/Omniwheel) |
 | Metal sticks (x15), 3mmx35mm | Steel (any metal can be used) |  Metals parts used to hold the omni wheels assembly |  |
-| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | [Motor Holder](./README_files/Motor%20holder.step) |
-| Internal plates | MDF (laser-cut) | Structure for the electronical components | [Bottom](./README_files/Internal%20Plate%20(Bottom).step) [Side for LiPo](./README_files/Internal%20Plate%20(Side%20for%20LiPo).step) [Side](./README_files/Internal%20Plate%20(Side).step) [Top](./README_files/internal%20Plate%20(Top).step) |
-| BMS Box | PETG (3D printed)  |  | [BMS Box (Cage)](./README_files/BMS%20Box%20(Cage).step) [BMS Box (Plate)](./README_files/BMS%20Box%20(Plate).step) |
-| Tube Holder | PETG (3D printed) | Holds the tube for the magnets | [Pipe Holder](./README_files/Pipe%20Holder.step) |
+| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | [Motor Holder](./README_files/Body/Motor%20holder.step) |
+| Internal plates | MDF (laser-cut) | Structure for the electronical components | [Bottom](./README_files/Body/Internal%20Plate%20(Bottom).step) [Side for LiPo](./README_files/Body/Internal%20Plate%20(Side%20for%20LiPo).step) [Side](./README_files/Body/Internal%20Plate%20(Side).step) [Top](./README_files/Body/internal%20Plate%20(Top).step) |
+| BMS Box | PETG (3D printed)  |  | [BMS Box (Cage)](./README_files/Body/BMS%20Box%20(Cage).step) [BMS Box (Plate)](./README_files/Body/BMS%20Box%20(Plate).step) |
+| Tube Holder | PETG (3D printed) | Holds the tube for the magnets | [Pipe Holder](./README_files/Body/Pipe%20Holder.step) |
 | 2 metal pipes (1.5mm(external diamateter) x 60mm & 2.5mm(external diamateter) x 200mm)| Aluminium (any metal can be used) | Tubes to hold and adjust the magnet holder and upper ball bearing |  |
-| Hose clamp | PETG (3D printed) | Made to hold the bard in the body and make the magnets height adjustable | [Hose Clamp](./README_files/Hose%20Clamp.step) |
-| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place | [Magnet Holder](./README_files/Magnet%20Holder.step) |
-| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place | [Magnet Holder](./README_files/Magnet%20Holder.step) |
-| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape | [Hemisphere](./README_files/Sphere%20Shell%20(Hemisphere).step) [Rail](./README_files/Sphere%20Shell%20(Rail).step) |
+| Hose clamp | PETG (3D printed) | Made to hold the bard in the body and make the magnets height adjustable | [Hose Clamp](./README_files/Body/Hose%20Clamp.step) |
+| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place | [Magnet Holder](./README_files/Body/Magnet%20Holder.step) |
+| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape | [Hemisphere](./README_files/Body/Sphere%20Shell%20(Hemisphere).step) [Rail](./README_files/Body/Sphere%20Shell%20(Rail).step) |
 
 ### Mechanical Parts (Head)
-| Part | Material | Notes | File 
+| Part | Material | Notes | File |
 |---|---|---| --- |
 | Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere | [Head-to-Sphere-folder](./README_files/Head-to-sphere%20contact) |
 | Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing | [123Roulement](https://www.123roulement.ch/accessoire/bille-aiguille/bille/ba-14-aisi304) |
-| Head shell | PETG (3D printed) | Holds the camera and magnets |  |
-| Servo Holder | PETG (3D printed) | Holds the servo for the camera |  |
-| Camera Holder | PETG (3D printed) |  |  |
+| Head shell | PETG (3D printed) | Holds the camera and magnets | [Head Shell](./README_files/Head/Head%20Shell.step) |
+| Servo Holder | PETG (3D printed) | Holds the servo for the camera | [Servo Holder](./README_files/Head/Servo_Holder.step) |
+| Camera Holder | PETG (3D printed) |  | [Camera Holder](./README_files/Head/Camera_Holder.step) |
+---
 ---
 
 ## Build the Robot
