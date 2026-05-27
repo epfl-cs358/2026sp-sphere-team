@@ -50,7 +50,7 @@ The robot:
 | Motors (×3) | DFRobot FIT0186 | 12 V DC gear motors with encoders, one per omni wheel |
 | Motor drivers (×3) | L298N H-bridge modules | One channel per motor |
 | IMU | Adafruit BNO055 | 9-DOF with built-in sensor fusion, I²C address 0x28 |
-| Battery | LiPo | [TODO: capacity/voltage] |
+| Battery | LiPo | 5000mAh / 3S = 11V |
 | BMS | [TODO: model] | Protects the LiPo |
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 |
 | Magnets | Neodymium | [TODO: dimensions] — hold the head onto the sphere |
