@@ -55,17 +55,33 @@ The robot:
 | Buck converter | LM2596 (or equivalent) | 12 V → 5 V for the ESP32 |
 | Magnets | Neodymium | [TODO: dimensions] — hold the head onto the sphere |
 
+!! ball bearing ||
+
 <img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
 
-### Mechanical Parts
+### Mechanical Parts (Body)
 
-| Part | Material | Notes |
-|---|---|---|
-| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape |
-| Internal chassis | MDF (laser-cut) | Holds the 3 motors at 120°, tilted inward by 30° |
-| Omni wheels (×3), ~9.25 cm diameter | PETG (3D printed) | |
-| Head shell | PETG (3D printed) | Holds the camera and magnets |
-| Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |
+| Part | Material | Notes | File 
+|---|---|---| --- |
+| Omni wheels (×3), ~9.25 cm diameter | PETG (3D printed) | |  |
+| Metal sticks (x15), 3mmx35mm | Steel (any metal can be used) |  Metals parts used to hold the omni wheels assembly |  |
+| Motor Holder | PETG (3D printed) | One peice that holds the 3 motors at 120°, tilted inward by 30° | |
+| Internal plates | MDF (laser-cut) | Structure for the electronical components |  |
+| Tube Holder | PETG (3D printed) | Holds the tube for the magnets |  
+| 2 metal pipes (1.5mm(external diamateter) x 60mm & 2.5mm(external diamateter) x 200mm)| Aluminium (any metal can be used) | Tubes to hold and adjust the magnet holder and upper ball bearing |  |
+| Hose clamp | PETG (3D printed) | Made to hold the bard in the body and make the magnets height adjustable |  |
+| Magnet Holder | PETG (3D printed) | Holds all 3 magnets at the correct place |  |
+| Sphere shell, 35 cm diameter | PETG (3D printed) | Two hemispheres, joined with magnets and tape |  |
+
+
+### Mechanical Parts (Head)
+
+| Part | Material | Notes | File 
+|---|---|---| --- |
+| Head-to-sphere contact | Metal ball-bearings in 3D-printed cages | Low-friction contact between head and sphere |  |
+| Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing |  |
+| Head shell | PETG (3D printed) | Holds the camera and magnets |  |
+
 
 ---
 
