@@ -117,9 +117,10 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 8. Make sure the Hose clamp is well fitted in the lower tube (it should be pressed down).
 9. Place the [Magnet Holder](./README_files/Body/Magnet%20Holder.step) on the upper tube.
 10. Glue a ball transfer unit to the top of the tube.
-11. You will be able to adjuste height of the magnet holder and ball transfer unit once you have the complete sphere.
-12. 3D print and screw on the upper plate the [BMS Box (Cage)](./README_files/Body/BMS%20Box%20(Cage).step) and [BMS Box (Plate)](./README_files/Body/BMS%20Box%20(Plate).step).
-13. Screw every body electronical component onto it (there are two drivers on the bottom plate and one on top).
+11. Add the magnets to the magnet holder (make sur they all point in the same direction)
+12. You will be able to adjuste height of the magnet holder and ball transfer unit once you have the complete sphere.
+13. 3D print and screw on the upper plate the [BMS Box (Cage)](./README_files/Body/BMS%20Box%20(Cage).step) and [BMS Box (Plate)](./README_files/Body/BMS%20Box%20(Plate).step).
+14. Screw every body electronical component onto it (there are two drivers on the bottom plate and one on top).
 15. Mount the motors.
 16. Mount the IMU as far as possible from the head magnets, and as low as possible in the chassis. A low center of mass keeps the robot stable.
 17. Do the wiring (follow the electronical diagram)
