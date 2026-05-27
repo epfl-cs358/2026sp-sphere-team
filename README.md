@@ -57,7 +57,6 @@ The robot:
 
 !! ball bearing ||
 
-<img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
 
 ### Mechanical Parts (Body)
 
@@ -116,6 +115,10 @@ The chassis holds the three motors at 120° spacing, each tilted inward at 30° 
 3. Check the rolling direction. Motor 0 is at the front, motor 1 back-right, motor 2 back-left. If a motor spins the wrong way, swap fwd/rev in `body-firmware/src/config/pins.h` rather than rewiring.
 
 ### Electronics Assembly
+
+**Electronics schematics**
+<img width="450" height="599" alt="image" src="https://github.com/user-attachments/assets/6c987e40-59d6-41f3-8db5-93d1d7340a63" />
+
 
 **Motor drivers (L298N)**
 
