@@ -40,6 +40,9 @@ static constexpr uint32_t kEvent_CONFIG_RESET         = 1u << 14;
 static constexpr uint32_t kEvent_STEP_INJECTED        = 1u << 15;
 static constexpr uint32_t kEvent_YAW_RATE_I_SATURATED   = 1u << 16;
 static constexpr uint32_t kEvent_YAW_RATE_OUT_SATURATED = 1u << 17;
+// Fires on the deadband-re-entry edge. Does NOT fire on onArmed() (which
+// sets latched=true unconditionally); the initial latched state is signaled
+// by heading_setpoint != NaN.
 static constexpr uint32_t kEvent_HEADING_LATCHED        = 1u << 18;
 static constexpr uint32_t kEvent_YAW_SPIN_RECOVERY      = 1u << 19;
 static constexpr uint32_t kEvent_IMU_INVALID            = 1u << 20;

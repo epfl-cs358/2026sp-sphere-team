@@ -52,6 +52,12 @@ public:
 
 private:
     void _finalizeTelemetry();
+    // Resets heading integrator, setpoint, LP-filter, and latch. Shared by
+    // onArmed / onDisarmed / stop — call sites where the controller is
+    // returning to a clean slate. `latched = true` is symmetric: it matters
+    // on arm (hold engaged from tick 1) and is harmless on disarm/stop where
+    // the controller isn't running.
+    void _resetHeadingState();
 
     PID  _pitchPid;
     PID  _rollPid;

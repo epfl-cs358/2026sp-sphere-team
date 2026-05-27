@@ -345,6 +345,13 @@ void BalancingDrivetrainController::_finalizeTelemetry() {
     _prevInFault = _inFault;
 }
 
+void BalancingDrivetrainController::_resetHeadingState() {
+    _headingIntegrator   = 0.0f;
+    _headingSetpoint     = 0.0f;
+    _omegaTargetFiltered = 0.0f;
+    _headingLatched      = true;
+}
+
 void BalancingDrivetrainController::stop() {
     _drivetrain.stop();
     _pitchPid.reset();
@@ -353,10 +360,7 @@ void BalancingDrivetrainController::stop() {
     _inFault = false;
     _yawSpinActive = false;
     _yawSpinElapsedSec = 0.0f;
-    _headingIntegrator   = 0.0f;
-    _headingSetpoint     = 0.0f;
-    _headingLatched      = true;
-    _omegaTargetFiltered = 0.0f;
+    _resetHeadingState();
 }
 
 void BalancingDrivetrainController::resetIntegrators() {
@@ -382,10 +386,7 @@ void BalancingDrivetrainController::onArmed() {
     // latch on. The first armed update() in deadband will keep the hold
     // active; out of deadband, the latch falls and re-latches on stick
     // release per the steady-state design.
-    _headingIntegrator   = 0.0f;
-    _headingSetpoint     = 0.0f;
-    _headingLatched      = true;
-    _omegaTargetFiltered = 0.0f;
+    _resetHeadingState();
 }
 
 // Armed→Disarmed edge. Mirrors onArmed so wheel PIDs don't carry I/D state
@@ -397,9 +398,6 @@ void BalancingDrivetrainController::onDisarmed() {
     _yawRatePid.reset();
     _yawSpinActive = false;
     _yawSpinElapsedSec = 0.0f;
-    _headingIntegrator   = 0.0f;
-    _headingSetpoint     = 0.0f;
-    _headingLatched      = true;
-    _omegaTargetFiltered = 0.0f;
+    _resetHeadingState();
     _drivetrain.resetPids();
 }

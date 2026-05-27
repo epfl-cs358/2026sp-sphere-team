@@ -911,43 +911,28 @@ void test_stick_returns_to_deadband_relatches_at_current_integrator() {
                       kEvent_HEADING_LATCHED);
 }
 
-// LP filter with tau=0.15s: step from 0 to a constant outer-P output should
-// reach ~63% after one time constant (≈150 ms ⇒ 15 ticks at 100Hz). We feed
-// the filter directly via a known heading_err and read omega_target.
+// LP filter step-response check. Out of the heading deadband, omega_clamped
+// = cmd.omega — so a constant cmd.omega is a clean unit step into the LP.
+// With τ=0.15 s, the LP should reach 1 - exp(-1) ≈ 0.632 of the step after
+// one time constant (15 ticks at dt=0.01 s).
 void test_lp_filter_reaches_63_percent_after_one_tau() {
     BalanceConfig c = makeTestConfig();
     c.headingKp = 1.0f;
-    c.yawRateKp = 0.0f; c.yawRateKi = 0.0f;  // bypass keeps cmd intact but
-                                              // outer-loop math still runs
-    *cfgBuf = c;
-
-    // Wait — passthrough mode bypasses outer loop. Engage outer loop by
-    // enabling at least one yaw gain.
+    // Outer loop must be active (passthrough mode bypasses the LP entirely):
+    // any non-zero yawRate gain engages it.
     c.yawRateKp = 0.5f;
+    c.yawRateKi = 0.0f;
     *cfgBuf = c;
 
     controller->onArmed();
-    // Setpoint = 0 (from arm). Drive integrator so heading_err = -1.0:
-    // arrange gyro.z so omega_clamped tracks ~1.0 in magnitude.
-    // Simpler: drive cmd.omega = 0 with integrator forced to -1 via gyro
-    // accumulation. But headingKp=1, so omega_clamped = setpoint - integrator
-    // = 0 - integrator. Choose gyro.z such that after 1 tick integrator ~
-    // a fixed step is hard. Instead, set headingKp very high and gyro=0
-    // with a manual setpoint via injecting a constant integrator-shift via
-    // a prior tick: hold gyro.z=-100 for 1 tick to push integrator to -1.0,
-    // then 0 gyro. After that, omega_clamped is clamped to OMEGA_MAX.
-    // For LP τ characterization we need a clean step input. Use deadband-out
-    // mode to set omega_clamped = cmd.omega exactly.
-    BodyVelocity drive{0.0f, 0.0f, 1.0f};  // step
+    BodyVelocity drive{0.0f, 0.0f, 1.0f};  // step, well outside deadband
     IMUReading level = makeIMU(upright());
 
-    // First tick: filter steps; sample omega_target across 15 ticks.
     float lastOmegaTarget = 0.0f;
     for (int i = 0; i < 15; ++i) {
         controller->update(drive, level, 0.01f);
         lastOmegaTarget = controller->lastTelemetry().omega_target;
     }
-    // After ~150 ms with τ=0.15 s, exp(-1) ≈ 0.368; one minus that ≈ 0.632.
     TEST_ASSERT_FLOAT_WITHIN(0.06f, 0.632f, lastOmegaTarget);
 }
 

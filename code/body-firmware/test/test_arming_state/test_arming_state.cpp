@@ -8,6 +8,16 @@
 
 using ArmingState::State;
 
+// Helper: fill the pre-arm gyro-quiet ring buffer with quiet samples so arm()
+// will pass the gate. Required after every begin()/clearKill() because the
+// buffer is loud-sentinel-initialized; tests that don't specifically exercise
+// the gate must seed it.
+static void seedQuietGyro() {
+    for (uint32_t i = 0; i < ArmingState::PREARM_QUIET_WINDOW_SAMPLES; ++i) {
+        ArmingState::recordGyroZ(0.0f);
+    }
+}
+
 void setUp() {
     ArmingState::begin();
 }
@@ -21,6 +31,7 @@ void test_boot_state_is_disarmed() {
 }
 
 void test_disarmed_to_armed() {
+    seedQuietGyro();
     ArmingState::arm();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
                       static_cast<int>(ArmingState::get()));
@@ -28,6 +39,7 @@ void test_disarmed_to_armed() {
 }
 
 void test_armed_to_disarmed() {
+    seedQuietGyro();
     ArmingState::arm();
     ArmingState::disarm();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
@@ -35,6 +47,7 @@ void test_armed_to_disarmed() {
 }
 
 void test_any_to_killed() {
+    seedQuietGyro();
     ArmingState::arm();
     ArmingState::kill();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Killed),
@@ -48,6 +61,7 @@ void test_any_to_killed() {
 
 void test_arm_while_killed_is_noop() {
     ArmingState::kill();
+    seedQuietGyro();
     ArmingState::arm();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Killed),
                       static_cast<int>(ArmingState::get()));
@@ -58,6 +72,7 @@ void test_clearkill_from_non_killed_is_noop() {
     TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
                       static_cast<int>(ArmingState::get()));
 
+    seedQuietGyro();
     ArmingState::arm();
     ArmingState::clearKill();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
@@ -181,6 +196,42 @@ void test_prearm_rejection_consumed_once() {
     TEST_ASSERT_FALSE(ArmingState::consumePrearmRejected());
 }
 
+// Loud-sentinel: directly after begin(), the buffer must be pre-populated
+// with values above PREARM_GYRO_QUIET_DPS so an arm() attempt without any
+// recordGyroZ() calls is rejected. Self-healing: the buffer only goes quiet
+// once real samples have overwritten the sentinels.
+void test_prearm_rejected_immediately_after_begin() {
+    // setUp() already ran begin(); no samples recorded.
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
+                      static_cast<int>(ArmingState::get()));
+    TEST_ASSERT_TRUE(ArmingState::consumePrearmRejected());
+}
+
+// Loud-sentinel: clearKill() must also reset the buffer to the sentinel so a
+// post-clearKill arm without fresh samples cannot reuse stale pre-kill data.
+void test_prearm_rejected_immediately_after_clearKill() {
+    for (int i = 0; i < 50; ++i) {
+        ArmingState::recordGyroZ(0.01f);  // quiet
+    }
+    ArmingState::arm();
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
+                      static_cast<int>(ArmingState::get()));
+
+    ArmingState::kill();
+    ArmingState::clearKill();
+    (void)ArmingState::consumePrearmRejected();
+
+    ArmingState::arm();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(State::Disarmed),
+                      static_cast<int>(ArmingState::get()));
+    TEST_ASSERT_TRUE(ArmingState::consumePrearmRejected());
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -197,6 +248,8 @@ int main() {
     RUN_TEST(test_prearm_old_loud_samples_age_out);
     RUN_TEST(test_prearm_buffer_records_negative_values_by_magnitude);
     RUN_TEST(test_prearm_rejection_consumed_once);
+    RUN_TEST(test_prearm_rejected_immediately_after_begin);
+    RUN_TEST(test_prearm_rejected_immediately_after_clearKill);
 
     return UNITY_END();
 }

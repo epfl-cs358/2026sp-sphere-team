@@ -44,11 +44,19 @@ void arming_log(const char* msg) {
 
 }  // namespace
 
+// Sentinel value used to "loud-fill" the pre-arm gyro-quiet ring buffer at
+// begin() and clearKill(). 1.0 rad/s ≈ 57 dps, well above PREARM_GYRO_QUIET_DPS
+// (1.5 dps). Guarantees an arm() attempt is rejected until the buffer has been
+// overwritten with PREARM_QUIET_WINDOW_SAMPLES of real, quiet samples — self-
+// healing against (a) boot-time arms before the control task has populated the
+// window and (b) post-clearKill arms that would otherwise reuse stale samples
+// from before the kill (recordGyroZ isn't called while Killed).
+static constexpr float PREARM_LOUD_SENTINEL = 1.0f;
+
 void begin() {
     g_state.store(State::Disarmed, std::memory_order_release);
-    // Zero the gyro-quiet buffer so a fresh begin() doesn't see stale loud
-    // samples from a previous test or boot session.
-    for (auto& slot : g_gyroBuf) slot.store(0.0f, std::memory_order_relaxed);
+    for (auto& slot : g_gyroBuf)
+        slot.store(PREARM_LOUD_SENTINEL, std::memory_order_relaxed);
     g_gyroHead.store(0, std::memory_order_release);
     g_prearmRejected.store(false, std::memory_order_release);
     arming_log("[arming] begin: Disarmed");
@@ -116,6 +124,13 @@ void clearKill() {
     if (g_state.compare_exchange_strong(expected, State::Disarmed,
                                         std::memory_order_acq_rel,
                                         std::memory_order_acquire)) {
+        // recordGyroZ() isn't called while Killed, so on the way out the
+        // buffer still holds whatever samples were captured before kill().
+        // Reset to the loud sentinel so an immediate arm() must wait for a
+        // fresh ~500 ms of quiet samples to overwrite the window.
+        for (auto& slot : g_gyroBuf)
+            slot.store(PREARM_LOUD_SENTINEL, std::memory_order_relaxed);
+        g_gyroHead.store(0, std::memory_order_release);
         arming_log("[arming] clearKill -> Disarmed");
     }
 }

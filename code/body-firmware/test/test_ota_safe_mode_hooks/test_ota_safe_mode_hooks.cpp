@@ -19,6 +19,11 @@ void setUp() {
 void tearDown() {}
 
 void test_on_ota_start_disarms() {
+    // Seed the pre-arm gyro-quiet buffer past the loud sentinel so arm() can
+    // pass the gate.
+    for (uint32_t i = 0; i < ArmingState::PREARM_QUIET_WINDOW_SAMPLES; ++i) {
+        ArmingState::recordGyroZ(0.0f);
+    }
     ArmingState::arm();
     TEST_ASSERT_EQUAL(static_cast<int>(State::Armed),
                       static_cast<int>(ArmingState::get()));
