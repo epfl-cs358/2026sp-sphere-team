@@ -5,6 +5,7 @@
 #include "BalancingDrivetrainController.h"
 
 #include <cmath>
+#include <limits>
 
 #include "BalanceTuner.h"
 #include "RobotConstants.h"
@@ -156,6 +157,22 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         if (tiltMagSin <= cfg.envelopeExitSin) {
             _inFault = false;
         } else {
+            // Mirror the still-held heading-cascade state into telemetry
+            // before the early return. _headingLatched / _headingSetpoint
+            // survive the fault, so an operator watching telemetry should
+            // see those values rather than the zero/NaN default-init that
+            // _lastTelemetry = {} produced above. The drivetrain gets zeros,
+            // and _omegaTargetFiltered was reset to 0 on fault entry.
+            const float heading_err =
+                _headingLatched ? (_headingSetpoint - _headingIntegrator) : 0.0f;
+            _lastTelemetry.heading_setpoint =
+                _headingLatched ? _headingSetpoint
+                                : std::numeric_limits<float>::quiet_NaN();
+            _lastTelemetry.heading_err      = heading_err;
+            _lastTelemetry.heading_P        =
+                _headingLatched ? (cfg.headingKp * heading_err) : 0.0f;
+            _lastTelemetry.omega_target_raw = 0.0f;
+            _lastTelemetry.omega_target     = _omegaTargetFiltered;
             _drivetrain.drive(BodyVelocity{0.0f, 0.0f, 0.0f});
             _finalizeTelemetry();
             return;
@@ -252,12 +269,16 @@ void BalancingDrivetrainController::update(const BodyVelocity& cmd,
         _yawRatePid.reset();
         _omegaTargetFiltered = 0.0f;
         _headingLatched = false;
+        _lastTelemetry.omega_target_raw = 0.0f;
+        _lastTelemetry.omega_target     = _omegaTargetFiltered;
     } else if (yawLoopDisabled) {
         // Passthrough: outer loop is moot if the inner loop isn't running.
         _yawRatePid.reset();
         omega_out = cmd.omega;
         _omegaTargetFiltered = cmd.omega;
         _headingLatched = false;
+        _lastTelemetry.omega_target_raw = cmd.omega;
+        _lastTelemetry.omega_target     = _omegaTargetFiltered;
     } else {
         float omega_clamped;
         if (std::fabs(cmd.omega) < HEADING_DEADBAND) {

@@ -159,6 +159,8 @@ arm
 
 ### Phase F2 — yaw-rate gain tuning
 
+**Before tuning `yawRateKp`**, disable the outer heading-hold loop: `balance set headingKp 0`. Otherwise the moment you arm with a non-zero `yawRateKp`, the outer loop engages and your rate-loop response will be polluted by heading-correction transients. Restore `headingKp = 1.0` after Phase F2 is satisfied.
+
 | # | Action | Expected | Observed |
 |---|--------|----------|----------|
 | 1 | Operator stick at zero, gently perturb yaw by hand | Crisp recentering with no oscillation | `[   ]` |
@@ -167,6 +169,8 @@ arm
 | 4 | `balance save` | `ok: saved` | `[   ]` |
 
 ### Phase F3 — heading hold (stick centered)
+
+**Restore `headingKp = 1.0` before this phase** (`balance set headingKp 1.0`) if you disabled it for Phase F2.
 
 | # | Action | Expected | Observed |
 |---|--------|----------|----------|

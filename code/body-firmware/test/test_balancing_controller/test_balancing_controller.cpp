@@ -1021,6 +1021,99 @@ void test_tilt_fault_preserves_heading_integrator() {
         controller->lastTelemetry().heading_integrated);
 }
 
+// Final-pass review fix: tilt-fault early-return zeros _lastTelemetry then
+// only repopulates a subset of fields. Heading state (setpoint/err/P) and
+// omega_target_* must be mirrored so an operator inspecting telemetry during
+// a fault sees the still-held cascade state, not zeros/NaN that would
+// falsely suggest heading hold was lost.
+void test_tilt_fault_preserves_heading_telemetry() {
+    BalanceConfig c = makeTestConfig();
+    c.headingKp = 1.0f;
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    controller->onArmed();
+    // Integrate heading to 0.3 rad over 100 ticks (gyro.z=0.3 * dt=0.01).
+    IMUReading drift = makeIMU(upright());
+    drift.gyro = Vec3{0.0f, 0.0f, 0.3f};
+    BodyVelocity zero{0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 100; ++i) {
+        controller->update(zero, drift, 0.01f);
+    }
+    // Confirm latched at 0 (setpoint snapshot taken on first armed tick when
+    // stick is in deadband) and integrator has tracked to ~0.3.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().heading_setpoint);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.3f,
+                             controller->lastTelemetry().heading_integrated);
+
+    // Trip fault at 65°; gyro.z=0 so integrator stays put.
+    IMUReading bad = makeIMU(pitchedForward(65.0f * 3.14159265f / 180.0f));
+    bad.gyro = Vec3{0.0f, 0.0f, 0.0f};
+    controller->update(zero, bad, 0.01f);
+
+    TEST_ASSERT_EQUAL(1, controller->lastTelemetry().in_fault);
+    // Critical: heading_setpoint must still read 0.0 (NOT NaN — latch
+    // survives fault), and heading_err must read -0.3 (the still-held error).
+    TEST_ASSERT_FALSE(std::isnan(controller->lastTelemetry().heading_setpoint));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().heading_setpoint);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.3f,
+                             controller->lastTelemetry().heading_err);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.3f,
+                             controller->lastTelemetry().heading_P);
+    // omega_target_* during fault: drivetrain gets zeros, and
+    // _omegaTargetFiltered was reset to 0 on fault entry.
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().omega_target_raw);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().omega_target);
+}
+
+// Passthrough (yawRateKp=0) currently leaves omega_target_* zero in telemetry
+// because the closed-loop branch is the only one writing them. Operator
+// reading telemetry while in passthrough should see cmd.omega mirrored.
+void test_passthrough_mirrors_cmd_omega_to_telemetry() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.0f;
+    c.yawRateKi = 0.0f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 1.5f};
+    IMUReading imuData = makeIMU(upright());
+    controller->update(cmd, imuData, 0.01f);
+
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.5f,
+                             controller->lastTelemetry().omega_target);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.5f,
+                             controller->lastTelemetry().omega_target_raw);
+}
+
+// Yaw-spin recovery clamps the commanded omega to zero. Locks the contract
+// that this is reflected in telemetry explicitly (not via default-init).
+void test_yaw_spin_zeros_omega_target_explicitly() {
+    BalanceConfig c = makeTestConfig();
+    c.yawRateKp = 0.5f;
+    *cfgBuf = c;
+
+    BodyVelocity cmd{0.0f, 0.0f, 0.0f};
+    IMUReading imuData = makeIMU(upright());
+    imuData.gyro = Vec3{0.0f, 0.0f, 15.0f};
+
+    bool recoveryFired = false;
+    for (int i = 0; i < 11; ++i) {
+        controller->update(cmd, imuData, 0.01f);
+        if (controller->lastTelemetry().event_flags & kEvent_YAW_SPIN_RECOVERY) {
+            recoveryFired = true;
+        }
+    }
+    TEST_ASSERT_TRUE(recoveryFired);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().omega_target);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f,
+                             controller->lastTelemetry().omega_target_raw);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_zero_command_level_platform_emits_zero);
@@ -1063,5 +1156,8 @@ int main() {
     RUN_TEST(test_outer_loop_clamped_to_omega_max);
     RUN_TEST(test_onArmed_resets_heading_state);
     RUN_TEST(test_tilt_fault_preserves_heading_integrator);
+    RUN_TEST(test_tilt_fault_preserves_heading_telemetry);
+    RUN_TEST(test_passthrough_mirrors_cmd_omega_to_telemetry);
+    RUN_TEST(test_yaw_spin_zeros_omega_target_explicitly);
     return UNITY_END();
 }
