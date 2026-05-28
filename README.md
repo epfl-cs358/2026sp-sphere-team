@@ -406,6 +406,9 @@ code/
 
 ## Quick Start
 
+Before starting up the robot, read the [Safety_Procedures.pdf](https://github.com/user-attachments/files/28337480/Safety_Procedures.pdf)
+
+
 ```bash
 make setup   # Install all dependencies
 make dev     # Start all services
