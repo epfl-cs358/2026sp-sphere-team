@@ -22,7 +22,7 @@ Team SPHERE
 | Component | Part | Notes | Link | Price (Unit) | Price (Total) |
 |---|---|---|---|---|---|
 | Magnets (x6) | Neodymium | (Ø 20 mm, height 5 mm N42) ; hold the head onto the sphere | [Supermagnete](https://www.supermagnete.ch/fre/aimants-disques-neodyme/disque-magnetique-20mm-5mm_S-20-05-N) | CHF 2.00 | CHF 12.00 |
-| Balls (14mm diameter) | Stainless Steel | Balls used in the heads ball bearing | [123Roulement](https://www.123roulement.ch/accessoire/bille-aiguille/bille/ba-14-aisi304) | CHF 3.30 | CHF 19.80 |
+| Balls (14mm diameter) (x6) | Stainless Steel | Balls used in the heads ball bearing | [123Roulement](https://www.123roulement.ch/accessoire/bille-aiguille/bille/ba-14-aisi304) | CHF 3.30 | CHF 19.80 |
 
 ---
 
