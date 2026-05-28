@@ -6,6 +6,9 @@
 #include "RobotConstants.h"
 #include "PID.h"
 
+#include "BringUp.h"
+OTA_SAFE_MODE_FOR("bb8-robot");
+
 static constexpr unsigned long LOOP_INTERVAL_MS = 10;
 static constexpr unsigned long PRINT_INTERVAL_MS = 200;
 
@@ -30,49 +33,21 @@ static unsigned long lastPrintTime = 0;
 static bool showRPM = false;
 static bool driving = false;
 
-void setup() {
-    Serial.begin(115200);
-    motor0.begin();
-    motor1.begin();
-    motor2.begin();
-    lastLoopTime = millis();
-    Serial.println("Drivetrain test ready.");
-    Serial.println("Commands:");
-    Serial.println("  <vx> <vy> <omega_deg>  — drive at body velocity");
-    Serial.println("  stop                   — brake all motors");
-    Serial.println("  rpm                    — toggle RPM display");
-}
-
-void loop() {
-    unsigned long now = millis();
-    if (now - lastLoopTime >= LOOP_INTERVAL_MS) {
-        drivetrain.update(static_cast<float>(now - lastLoopTime) / 1000.0f);
-        lastLoopTime = now;
-    }
-
-    if (showRPM && (now - lastPrintTime >= PRINT_INTERVAL_MS)) {
-        lastPrintTime = now;
-        auto target = drivetrain.getTargetRPMs();
-        Serial.printf("T: %7.1f %7.1f %7.1f | A: %7.1f %7.1f %7.1f\n",
-                      target[0], target[1], target[2],
-                      motor0.getFilteredRPM(), motor1.getFilteredRPM(), motor2.getFilteredRPM());
-    }
-
-    if (!Serial.available()) return;
-
-    String line = Serial.readStringUntil('\n');
+static void handleCommand(const String& raw) {
+    String line = raw;
     line.trim();
+    if (line.length() == 0) return;
 
     if (line == "stop") {
         drivetrain.stop();
         driving = false;
-        Serial.println("All motors braked.");
+        RemoteSerial::println("All motors braked.");
         return;
     }
 
     if (line == "rpm") {
         showRPM = !showRPM;
-        Serial.printf("RPM display %s\n", showRPM ? "ON" : "OFF");
+        RemoteSerial::printf("RPM display %s\n", showRPM ? "ON" : "OFF");
         return;
     }
 
@@ -80,7 +55,7 @@ void loop() {
     int secondSpace = line.indexOf(' ', firstSpace + 1);
 
     if (firstSpace < 0 || secondSpace < 0) {
-        Serial.println("ERR: format is <vx> <vy> <omega_deg>");
+        RemoteSerial::println("ERR: format is <vx> <vy> <omega_deg>");
         return;
     }
 
@@ -92,5 +67,59 @@ void loop() {
     BodyVelocity vel = {vx, vy, omega};
     drivetrain.drive(vel);
     driving = true;
-    Serial.printf("Drive: vx=%.2f vy=%.2f omega=%.1f deg/s\n", vx, vy, omegaDeg);
+    RemoteSerial::printf("Drive: vx=%.2f vy=%.2f omega=%.1f deg/s\n", vx, vy, omegaDeg);
+}
+
+void setup() {
+    BringUp::begin();
+
+    // Bring each motor up AND force its PWM channels to zero before the loop
+    // runs. begin() only configures pinMode; setSpeed(0.0f) guarantees both
+    // fwd/rev pins are written to 0 so no stale LEDC state from before the
+    // soft-reset can leak into the wheels.
+    motor0.begin(); motor0.setSpeed(0.0f);
+    motor1.begin(); motor1.setSpeed(0.0f);
+    motor2.begin(); motor2.setSpeed(0.0f);
+
+    RemoteSerial::onMessage(handleCommand);
+
+    lastLoopTime = millis();
+    RemoteSerial::println("Drivetrain test ready.");
+    RemoteSerial::println("Commands:");
+    RemoteSerial::println("  <vx> <vy> <omega_deg>  — drive at body velocity");
+    RemoteSerial::println("  stop                   — brake all motors");
+    RemoteSerial::println("  rpm                    — toggle RPM display");
+}
+
+void loop() {
+    BringUp::tick();
+
+    // Hard-zero PWM while flash is being overwritten so the wheels can't keep
+    // chewing on a stale target through the upload window.
+    if (OtaSafeMode::isUpdating()) {
+        motor0.setSpeed(0.0f);
+        motor1.setSpeed(0.0f);
+        motor2.setSpeed(0.0f);
+        driving = false;
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now - lastLoopTime >= LOOP_INTERVAL_MS) {
+        drivetrain.update(static_cast<float>(now - lastLoopTime) / 1000.0f);
+        lastLoopTime = now;
+    }
+
+    if (showRPM && (now - lastPrintTime >= PRINT_INTERVAL_MS)) {
+        lastPrintTime = now;
+        auto target = drivetrain.getTargetRPMs();
+        RemoteSerial::printf("T: %7.1f %7.1f %7.1f | A: %7.1f %7.1f %7.1f\n",
+                             target[0], target[1], target[2],
+                             motor0.getFilteredRPM(), motor1.getFilteredRPM(), motor2.getFilteredRPM());
+    }
+
+    if (Serial.available()) {
+        String line = Serial.readStringUntil('\n');
+        handleCommand(line);
+    }
 }

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BB-8 teleop</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a1a; color: #e8e8e8; margin: 0; padding: 24px; }
+  .panel { max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0 0 16px; font-weight: 500; font-size: 22px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  input[type=text] { background: #2a2a2a; color: #eee; border: 1px solid #444; padding: 6px 10px; border-radius: 4px; font-family: ui-monospace, Menlo, monospace; flex: 1; min-width: 200px; }
+  button { background: #2a6cdf; color: #fff; border: 0; padding: 8px 18px; border-radius: 4px; font-weight: 500; cursor: pointer; font-size: 14px; }
+  button:hover { background: #2255b8; }
+  button.disconnect { background: #b13030; }
+  button.disconnect:hover { background: #8e2424; }
+  .status { padding: 6px 12px; border-radius: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .status.disconnected { background: #3a1a1a; color: #ff8080; }
+  .status.connected    { background: #1a3a1a; color: #80ff80; }
+  .status.connecting   { background: #3a3a1a; color: #ffff80; }
+  .keys { background: #222; padding: 14px 16px; border-radius: 6px; margin: 18px 0; line-height: 1.8; font-size: 14px; }
+  .key  { display: inline-block; background: #3a3a3a; padding: 2px 8px; border-radius: 3px; font-family: ui-monospace, Menlo, monospace; min-width: 16px; text-align: center; }
+  .cmd  { background: #222; padding: 14px 18px; border-radius: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 18px; }
+  .cmd .v { display: inline-block; min-width: 70px; color: #80b0ff; }
+  label   { font-size: 13px; color: #aaa; min-width: 130px; }
+  input[type=range] { flex: 1; max-width: 240px; }
+  .hint   { color: #888; font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <h1>BB-8 teleop</h1>
+
+  <div class="row">
+    <label>ws://</label>
+    <input type="text" id="ip" value="172.20.10.2:80">
+    <button id="connect">Connect</button>
+    <span class="status disconnected" id="status">disconnected</span>
+  </div>
+
+  <div class="row">
+    <label>vx max <span id="vxmax-val">0.30</span> m/s</label>
+    <input type="range" id="vxmax" min="0.05" max="1.0" step="0.05" value="0.3">
+  </div>
+  <div class="row">
+    <label>vy max <span id="vymax-val">0.30</span> m/s</label>
+    <input type="range" id="vymax" min="0.05" max="1.0" step="0.05" value="0.3">
+  </div>
+  <div class="row">
+    <label>omega max <span id="omegamax-val">1.00</span> rad/s</label>
+    <input type="range" id="omegamax" min="0.1" max="3.0" step="0.1" value="1.0">
+  </div>
+
+  <div class="keys">
+    <div><span class="key">&uarr;</span> / <span class="key">W</span> forward &nbsp; <span class="key">&darr;</span> / <span class="key">S</span> back</div>
+    <div><span class="key">&larr;</span> / <span class="key">A</span> turn left &nbsp; <span class="key">&rarr;</span> / <span class="key">D</span> turn right</div>
+    <div><span class="key">Q</span> strafe left &nbsp; <span class="key">E</span> strafe right</div>
+    <div><span class="key">Space</span> emergency stop (zeros all)</div>
+  </div>
+
+  <div class="cmd">
+    vx <span class="v" id="vx">0.00</span>
+    vy <span class="v" id="vy">0.00</span>
+    &omega; <span class="v" id="omega">0.00</span>
+  </div>
+
+  <div class="hint">Sends every 50&nbsp;ms (20&nbsp;Hz). Firmware ramps to zero after 200&nbsp;ms of silence.</div>
+</div>
+
+<script>
+const SEND_RATE_MS = 50;
+const RECONNECT_DELAY_MS = 500;
+
+let ws = null;
+let cmd = { vx: 0, vy: 0, omega: 0 };
+const max = { vx: 0.3, vy: 0.3, omega: 1.0 };
+let tick = null;
+let reconnectTimer = null;
+let userWantsConnection = false;
+const keys = new Set();
+
+const el = id => document.getElementById(id);
+
+function setStatus(state, text) {
+  const s = el('status');
+  s.className = 'status ' + state;
+  s.textContent = text;
+}
+
+function recompute() {
+  let vx = 0, vy = 0, omega = 0;
+  if (keys.has('ArrowUp')    || keys.has('w')) vx    += max.vx;
+  if (keys.has('ArrowDown')  || keys.has('s')) vx    -= max.vx;
+  if (keys.has('ArrowLeft')  || keys.has('a')) omega += max.omega;
+  if (keys.has('ArrowRight') || keys.has('d')) omega -= max.omega;
+  if (keys.has('q'))                           vy    += max.vy;
+  if (keys.has('e'))                           vy    -= max.vy;
+  if (keys.has(' ')) { vx = vy = omega = 0; }
+  cmd = { vx, vy, omega };
+  el('vx').textContent    = vx.toFixed(2);
+  el('vy').textContent    = vy.toFixed(2);
+  el('omega').textContent = omega.toFixed(2);
+}
+
+function send() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(cmd.vx + ',' + cmd.vy + ',' + cmd.omega);
+  }
+}
+
+function setConnectButton(connected) {
+  el('connect').textContent = connected ? 'Disconnect' : 'Connect';
+  el('connect').classList.toggle('disconnect', connected);
+}
+
+function connect() {
+  const url = 'ws://' + el('ip').value;
+  setStatus('connecting', 'connecting');
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    setStatus('disconnected', 'invalid url');
+    ws = null;
+    scheduleReconnect();
+    return;
+  }
+  ws.onopen  = () => {
+    setStatus('connected', 'connected');
+    setConnectButton(true);
+    if (!tick) tick = setInterval(send, SEND_RATE_MS);
+  };
+  ws.onclose = () => {
+    ws = null;
+    if (tick) { clearInterval(tick); tick = null; }
+    if (userWantsConnection) {
+      setStatus('connecting', 'reconnecting');
+      scheduleReconnect();
+    } else {
+      setStatus('disconnected', 'disconnected');
+      setConnectButton(false);
+    }
+  };
+  ws.onerror = () => { /* onclose handles the user-visible state */ };
+}
+
+function scheduleReconnect() {
+  if (!userWantsConnection || reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (userWantsConnection && (!ws || ws.readyState === WebSocket.CLOSED)) {
+      connect();
+    }
+  }, RECONNECT_DELAY_MS);
+}
+
+el('connect').addEventListener('click', () => {
+  if (userWantsConnection) {
+    userWantsConnection = false;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (ws) ws.close();
+  } else {
+    userWantsConnection = true;
+    connect();
+  }
+  // Drop focus so spacebar/enter can't re-trigger the button.
+  el('connect').blur();
+});
+
+['vxmax', 'vymax', 'omegamax'].forEach(name => {
+  const slider = el(name);
+  const label  = el(name + '-val');
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    label.textContent = v.toFixed(2);
+    if (name === 'vxmax')    max.vx    = v;
+    if (name === 'vymax')    max.vy    = v;
+    if (name === 'omegamax') max.omega = v;
+    recompute();
+  });
+  // After a drag, release focus so arrow keys drive the robot, not the slider.
+  slider.addEventListener('change', () => slider.blur());
+});
+
+function inIpField() {
+  return document.activeElement === el('ip');
+}
+
+document.addEventListener('keydown', e => {
+  if (inIpField()) return;
+  if (e.repeat) return;
+  keys.add(e.key);
+  recompute();
+  if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
+});
+document.addEventListener('keyup', e => {
+  if (inIpField()) return;
+  keys.delete(e.key);
+  recompute();
+});
+window.addEventListener('blur', () => { keys.clear(); recompute(); });
+</script>
+</body>
+</html>

@@ -14,11 +14,17 @@ class PassthroughDrivetrainController
 public:
     using DrivetrainController::DrivetrainController;
 
-    void update(const BodyVelocity& command, const IMUReading& /*imuData*/) override {
+    void update(const BodyVelocity& command, const IMUReading& /*imuData*/, float /*dt*/) override {
         _drivetrain.drive(command);
     }
 
     void stop() override {
         _drivetrain.stop();
     }
+
+    // Passthrough doesn't accumulate its own state, but the underlying
+    // drivetrain may carry inner-loop PID state across arming cycles.
+    // Forward the edge so wheel PIDs (e.g. inside OmniDrivetrain) reset.
+    void onArmed()    override { _drivetrain.resetPids(); }
+    void onDisarmed() override { _drivetrain.resetPids(); }
 };

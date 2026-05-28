@@ -80,12 +80,12 @@ void tearDown() {
 
 // --- Initialization (3) ---
 
-void test_begin_success_initializes_ndof_and_crystal() {
+void test_begin_success_initializes_imuplus_and_crystal() {
     bno_begin_fake.return_val = true;
     prefs_getBytes_fake.return_val = 0;
     TEST_ASSERT_TRUE(imu_dev->begin());
     TEST_ASSERT_EQUAL_UINT(1, bno_begin_fake.call_count);
-    TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_NDOF, bno_begin_fake.arg0_val);
+    TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_IMUPLUS, bno_begin_fake.arg0_val);
     TEST_ASSERT_EQUAL_UINT(1, bno_setExtCrystalUse_fake.call_count);
     TEST_ASSERT_TRUE(bno_setExtCrystalUse_fake.arg0_val);
     TEST_ASSERT_EQUAL_UINT(0, bno_setSensorOffsets_fake.call_count);
@@ -103,7 +103,7 @@ void test_begin_restores_saved_calibration() {
     imu_dev->begin();
     TEST_ASSERT_EQUAL_UINT(2, bno_setMode_fake.call_count);
     TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_CONFIG, bno_setMode_fake.arg0_history[0]);
-    TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_NDOF, bno_setMode_fake.arg0_history[1]);
+    TEST_ASSERT_EQUAL_UINT8(OPERATION_MODE_IMUPLUS, bno_setMode_fake.arg0_history[1]);
     TEST_ASSERT_EQUAL_UINT(1, bno_setSensorOffsets_fake.call_count);
 }
 
@@ -273,6 +273,22 @@ void test_no_restore_when_no_saved_data() {
     TEST_ASSERT_EQUAL_UINT(0, bno_setSensorOffsets_fake.call_count);
 }
 
+// wasRestored() distinguishes warm boot (offsets recovered from NVS, fast-path
+// the cal wait) from cold boot (do the full 6-orientation accel dance).
+void test_wasRestored_true_after_nvs_hit() {
+    prefs_getBytes_fake.return_val = BNO055IMU::OFFSET_SIZE;
+    bno_begin_fake.return_val = true;
+    imu_dev->begin();
+    TEST_ASSERT_TRUE(imu_dev->wasRestored());
+}
+
+void test_wasRestored_false_when_cold() {
+    prefs_getBytes_fake.return_val = 0;
+    bno_begin_fake.return_val = true;
+    imu_dev->begin();
+    TEST_ASSERT_FALSE(imu_dev->wasRestored());
+}
+
 // --- Sensor Boundaries (4) ---
 
 void test_heading_at_zero_and_near_360() {
@@ -381,7 +397,7 @@ int main() {
     UNITY_BEGIN();
 
     // Initialization
-    RUN_TEST(test_begin_success_initializes_ndof_and_crystal);
+    RUN_TEST(test_begin_success_initializes_imuplus_and_crystal);
     RUN_TEST(test_begin_failure_returns_false);
     RUN_TEST(test_begin_restores_saved_calibration);
 
@@ -407,6 +423,8 @@ int main() {
     RUN_TEST(test_auto_save_on_first_full_calibration);
     RUN_TEST(test_no_save_when_partially_calibrated);
     RUN_TEST(test_no_restore_when_no_saved_data);
+    RUN_TEST(test_wasRestored_true_after_nvs_hit);
+    RUN_TEST(test_wasRestored_false_when_cold);
 
     // Sensor Boundaries
     RUN_TEST(test_heading_at_zero_and_near_360);

@@ -20,10 +20,12 @@ public:
     }
     void update(float /*dt*/) override {}
     void stop() override { stopCallCount++; }
+    void resetPids() override { resetPidsCallCount++; }
 
     BodyVelocity lastDrive{};
     int driveCallCount = 0;
     int stopCallCount = 0;
+    int resetPidsCallCount = 0;
 
 private:
     MockMotor _m0, _m1, _m2;
@@ -57,11 +59,34 @@ void tearDown() {
 void test_update_forwards_command_to_drivetrain() {
     BodyVelocity cmd{1.5f, -0.5f, 2.0f};
     IMUReading imuData{};
-    controller->update(cmd, imuData);
+    controller->update(cmd, imuData, 0.01f);
     TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
     TEST_ASSERT_EQUAL_FLOAT(1.5f, drivetrain->lastDrive.vx);
     TEST_ASSERT_EQUAL_FLOAT(-0.5f, drivetrain->lastDrive.vy);
     TEST_ASSERT_EQUAL_FLOAT(2.0f, drivetrain->lastDrive.omega);
+}
+
+void test_update_ignores_dt_value() {
+    BodyVelocity cmd{0.25f, 0.75f, -1.0f};
+    IMUReading imuData{};
+
+    controller->update(cmd, imuData, 0.01f);
+    TEST_ASSERT_EQUAL(1, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
+
+    controller->update(cmd, imuData, 1.0f);
+    TEST_ASSERT_EQUAL(2, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
+
+    controller->update(cmd, imuData, 0.0f);
+    TEST_ASSERT_EQUAL(3, drivetrain->driveCallCount);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, drivetrain->lastDrive.vx);
+    TEST_ASSERT_EQUAL_FLOAT(0.75f, drivetrain->lastDrive.vy);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0f, drivetrain->lastDrive.omega);
 }
 
 void test_stop_calls_drivetrain_stop() {
@@ -69,9 +94,27 @@ void test_stop_calls_drivetrain_stop() {
     TEST_ASSERT_EQUAL(1, drivetrain->stopCallCount);
 }
 
+// Passthrough doesn't accumulate its own state, but the underlying drivetrain
+// may carry inner-loop PID state across arming. Both edges must forward to
+// drivetrain.resetPids() and MUST NOT brake the motors.
+void test_onArmed_resets_drivetrain_pids_without_stopping() {
+    controller->onArmed();
+    TEST_ASSERT_EQUAL(1, drivetrain->resetPidsCallCount);
+    TEST_ASSERT_EQUAL(0, drivetrain->stopCallCount);
+}
+
+void test_onDisarmed_resets_drivetrain_pids_without_stopping() {
+    controller->onDisarmed();
+    TEST_ASSERT_EQUAL(1, drivetrain->resetPidsCallCount);
+    TEST_ASSERT_EQUAL(0, drivetrain->stopCallCount);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_update_forwards_command_to_drivetrain);
+    RUN_TEST(test_update_ignores_dt_value);
     RUN_TEST(test_stop_calls_drivetrain_stop);
+    RUN_TEST(test_onArmed_resets_drivetrain_pids_without_stopping);
+    RUN_TEST(test_onDisarmed_resets_drivetrain_pids_without_stopping);
     return UNITY_END();
 }

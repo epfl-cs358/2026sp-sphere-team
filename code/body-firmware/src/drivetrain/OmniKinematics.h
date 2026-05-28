@@ -14,27 +14,27 @@ public:
         BB8_ASSERT(config.maxRPM > 0.0f, "OmniKinematics: maxRPM must be > 0");
         BB8_ASSERT(std::abs(cosf(config.tiltAngle)) > 1e-6f,
                    "OmniKinematics: tiltAngle too close to pi/2");
+        for (int i = 0; i < 3; i++) {
+            _sin[i] = sinf(config.wheelAngles[i]);
+            _cos[i] = cosf(config.wheelAngles[i]);
+        }
     }
 
     std::array<float, 3> toWheelRPMs(const BodyVelocity& v) const {
-        constexpr float SIN_0   =  0.0f;
-        constexpr float COS_0   =  1.0f;
-        constexpr float SIN_120 =  0.86602540378f;
-        constexpr float COS_120 = -0.5f;
-        constexpr float SIN_240 = -0.86602540378f;
-        constexpr float COS_240 = -0.5f;
-
-        float cosAlpha = cosf(_config.tiltAngle);
-        float scale = 1.0f / (_config.wheelRadius * cosAlpha);
-
-        float R = _config.robotRadius;
-
-        float w0 = scale * (-SIN_0   * v.vx - COS_0   * v.vy - R * v.omega);
-        float w1 = scale * (-SIN_120 * v.vx - COS_120 * v.vy - R * v.omega);
-        float w2 = scale * (-SIN_240 * v.vx - COS_240 * v.vy - R * v.omega);
-
+        const float scale = 1.0f / (_config.wheelRadius * cosf(_config.tiltAngle));
+        const float R = _config.robotRadius;
         constexpr float RAD_TO_RPM = 60.0f / (2.0f * static_cast<float>(M_PI));
-        std::array<float, 3> rpms = {w0 * RAD_TO_RPM, w1 * RAD_TO_RPM, w2 * RAD_TO_RPM};
+
+        std::array<float, 3> rpms;
+        for (int i = 0; i < 3; i++) {
+            // B7: vx coefficient is +sin(θᵢ), not -sin(θᵢ). Bench Phase C
+            // confirmed `+vx` was inverted under the prior -sin convention
+            // (shell rolled BACKWARD instead of forward for REP-103 +x).
+            // The vy/omega terms are already REP-103-aligned (see commit
+            // 6486be8 which fixed those signs but missed vx).
+            const float w = scale * (_sin[i] * v.vx + _cos[i] * v.vy + R * v.omega);
+            rpms[i] = w * RAD_TO_RPM;
+        }
 
         float maxAbs = 0.0f;
         for (int i = 0; i < 3; i++) {
@@ -54,4 +54,6 @@ public:
 
 private:
     DrivetrainConfig _config;
+    float _sin[3];
+    float _cos[3];
 };

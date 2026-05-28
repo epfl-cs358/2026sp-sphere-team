@@ -45,6 +45,18 @@ export default function RootLayout({
             >
               Video
             </Link>
+            <Link
+              href="/control"
+              className="hover:text-zinc-100 transition-colors"
+            >
+              Control
+            </Link>
+            <Link
+              href="/tune"
+              className="hover:text-zinc-100 transition-colors"
+            >
+              Tune
+            </Link>
           </div>
         </nav>
         <main className="flex flex-1 flex-col">{children}</main>

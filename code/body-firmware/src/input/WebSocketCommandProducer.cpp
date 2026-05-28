@@ -12,6 +12,7 @@
 #include <freertos/semphr.h>
 #include <esp_task_wdt.h>
 
+#include "ArmingState.h"
 #include "CommandFrameParser.h"
 
 namespace {
@@ -47,8 +48,10 @@ void WebSocketCommandProducer::start() {
     _server->onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
         this->onWsEvent(num, static_cast<uint8_t>(type), payload, length);
     });
-    // Detect half-open TCP within ~6s: ping every 2s, fail after 1s + 2 retries.
-    _server->enableHeartbeat(2000, 1000, 2);
+    // Detect half-open TCP within ~7.5s: ping every 3s, fail after 2.5s + 2 retries.
+    // pingInterval > pongTimeout is required by arduinoWebSockets (see issue #769).
+    // Tuned for consumer Wi-Fi where a single ~1s RTT spike is normal.
+    _server->enableHeartbeat(3000, 2500, 2);
 
     _exitSemaphore = xSemaphoreCreateBinary();
     _running = true;
@@ -119,15 +122,16 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
     auto wsType = static_cast<WStype_t>(type);
     switch (wsType) {
         case WStype_CONNECTED: {
-            // Single-client policy: accept the first client, reject the rest.
-            // Two operators sending commands would oscillate the latch.
-            uint8_t expected = kNoClient;
-            if (_activeClient.compare_exchange_strong(expected, clientNum)) {
-                _connected = true;
-                Serial.printf("[ws] client %u connected\n", clientNum);
+            // Single-client policy: drop oldest, accept newest. The new client
+            // pre-empts any stale slot holder so reconnects after a network blip
+            // aren't bounced before the heartbeat evicts the dead connection.
+            uint8_t prior = _activeClient.exchange(clientNum);
+            _connected = true;
+            if (prior != kNoClient) {
+                Serial.printf("[ws] client %u took slot from %u\n", clientNum, prior);
+                if (_server) _server->disconnect(prior);
             } else {
-                Serial.printf("[ws] client %u rejected (active=%u)\n", clientNum, expected);
-                if (_server) _server->disconnect(clientNum);
+                Serial.printf("[ws] client %u connected\n", clientNum);
             }
             break;
         }
@@ -149,23 +153,45 @@ void WebSocketCommandProducer::onWsEvent(uint8_t clientNum, uint8_t type,
             if (!result.ok()) {
                 _parseFailCount.fetch_add(1, std::memory_order_relaxed);
                 switch (result.error) {
-                    case FrameParseError::EmptyOrTooLong: logParseFail("len");   break;
-                    case FrameParseError::InvalidVx:      logParseFail("vx");    break;
-                    case FrameParseError::InvalidVy:      logParseFail("vy");    break;
-                    case FrameParseError::InvalidOmega:   logParseFail("omega"); break;
+                    case FrameParseError::EmptyOrTooLong:     logParseFail("len");     break;
+                    case FrameParseError::InvalidVx:          logParseFail("vx");      break;
+                    case FrameParseError::InvalidVy:          logParseFail("vy");      break;
+                    case FrameParseError::InvalidOmega:       logParseFail("omega");   break;
+                    case FrameParseError::InvalidControlVerb: logParseFail("control"); break;
                     default: break;
                 }
                 return;
             }
 
-            _latch.write(result.value);
+            const uint32_t beforeVelocityCount =
+                _frameCount.load(std::memory_order_relaxed);
+            // QueryArmState callback echoes `armstate:<state>` back on the
+            // active client so the webapp can reconcile its optimistic local
+            // arming state with firmware truth on reconnect.
+            auto onQueryArmState = [this, clientNum](ArmingState::State s) {
+                const char* name = "disarmed";
+                switch (s) {
+                    case ArmingState::State::Disarmed: name = "disarmed"; break;
+                    case ArmingState::State::Armed:    name = "armed";    break;
+                    case ArmingState::State::Killed:   name = "killed";   break;
+                }
+                if (_server) {
+                    char msg[32];
+                    int n = snprintf(msg, sizeof(msg), "armstate:%s", name);
+                    if (n > 0) _server->sendTXT(clientNum, msg, n);
+                }
+            };
+            dispatchFrame(_latch, _frameCount, result, onQueryArmState);
 
-            // Periodic counter dump every 1000 frames (~10s @ 100 Hz).
-            uint32_t count = _frameCount.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (count % 1000 == 0) {
-                Serial.printf("[ws] frames=%u parse_fail=%u\n",
-                              count,
-                              _parseFailCount.load(std::memory_order_relaxed));
+            // Periodic counter dump every 1000 *velocity* frames (~10s @ 100 Hz).
+            // Control frames bypass the counter (rare, not stick throughput).
+            if (result.kind == FrameKind::Velocity) {
+                const uint32_t count = beforeVelocityCount + 1;
+                if (count % 1000 == 0) {
+                    Serial.printf("[ws] frames=%u parse_fail=%u\n",
+                                  count,
+                                  _parseFailCount.load(std::memory_order_relaxed));
+                }
             }
             break;
         }

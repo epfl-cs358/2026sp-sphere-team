@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bb8.tune-capture</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>python3</string>
+        <string>/Users/&lt;USERNAME&gt;/Developer/mit/2026sp-sphere-team/code/body-firmware/tools/tune_pid.py</string>
+        <string>capture</string>
+        <string>--host</string>
+        <string>&lt;HOST&gt;</string>
+        <string>--root</string>
+        <string>/Users/&lt;USERNAME&gt;/.bb8-telemetry</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/bb8-tune-capture.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/bb8-tune-capture.err.log</string>
+</dict>
+</plist>

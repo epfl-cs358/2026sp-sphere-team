@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "Drivetrain.h"
 #include "OmniKinematics.h"
 #include "PID.h"
@@ -36,8 +38,34 @@ public:
         return {_targetRPMs[0], _targetRPMs[1], _targetRPMs[2]};
     }
 
+    std::array<WheelTelemetry, 3> getWheelTelemetry() const override {
+        std::array<WheelTelemetry, 3> t;
+        for (int i = 0; i < 3; i++) {
+            t[i] = WheelTelemetry{
+                _targetRPMs[i],
+                _motors[i]->getFilteredRPM(),
+                _pids[i]->lastP(),
+                _pids[i]->lastI(),
+                _pids[i]->lastD(),
+                _pids[i]->lastOutput(),
+            };
+        }
+        return t;
+    }
+
     void stop() override {
         for (auto* m : _motors) m->brake();
+        for (auto* p : _pids) p->reset();
+        for (int i = 0; i < 3; i++) _targetRPMs[i] = 0.0f;
+    }
+
+    // Pure inner-loop reset: clears per-wheel PID state and zeroes
+    // _targetRPMs but does NOT brake the motors. Used on arming-edge
+    // transitions so the next update(dt) recomputes cleanly with
+    // _firstCompute=true instead of D-spiking against a stale
+    // _prevMeasurement accumulated while the drivetrain was running
+    // unarmed.
+    void resetPids() override {
         for (auto* p : _pids) p->reset();
         for (int i = 0; i < 3; i++) _targetRPMs[i] = 0.0f;
     }
